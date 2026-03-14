@@ -13,7 +13,7 @@
 
 **AerialClaw** is a personal AI agent framework for general autonomous aerial systems. The system provides a standardized library of atomic action skills (takeoff, navigation, perception, etc.), with an LLM performing real-time environmental perception, decision planning, and skill composition during task execution — eliminating the need to pre-script complete flight procedures for each mission, while endowing each drone with its own identity, task memory, and skill evolution capability.
 
-Developed by ROBOTY Lab, School of Computer Science, Xidian University, the project builds on the design philosophy of [OpenClaw](https://github.com/openclaw/openclaw), using Markdown documents to define and maintain each agent's cognitive state and capability boundaries, autonomously read and written by the model — making every drone truly "personal" with its own experience, preferences, and growth trajectory.
+The project uses Markdown documents to define and maintain each agent's cognitive state and capability boundaries, autonomously read and written by the model — making every drone truly "personal" with its own experience, preferences, and growth trajectory.
 
 > *"No pre-scripted procedures, just defined capabilities — let every drone think, learn, and grow through its own missions."*
 
@@ -30,16 +30,14 @@ Developed by ROBOTY Lab, School of Computer Science, Xidian University, the proj
 - [Research Background and Motivation](#research-background-and-motivation)
 - [System Architecture Design](#system-architecture-design)
 - [Decision Mechanism](#decision-mechanism-autonomous-loop-implementation)
-- [Integrated Skill System](#integrated-skill-system)
+- [Skill System](#integrated-skill-system)
 - [Perception System](#perception-system)
-- [Simulation Verification Environment](#simulation-verification-environment)
+- [Simulation Environment](#simulation-verification-environment)
 - [Web Monitoring Interface](#web-monitoring-interface)
-- [Installation and Deployment](#installation-and-deployment) — Full setup from scratch
-- [Quick Start](#quick-start) — Launch with 4 terminals
+- [Installation and Deployment](#installation-and-deployment)
+- [Quick Start](#quick-start)
 - [Project Structure](#project-structure)
-- [Research Progress and Plans](#research-progress-and-plans)
-- [Contribution](#contribution)
-- [Acknowledgments](#acknowledgments)
+- [Acknowledgements](#acknowledgements)
 
 ---
 
@@ -49,21 +47,12 @@ Developed by ROBOTY Lab, School of Computer Science, Xidian University, the proj
 
 ## Research Background and Motivation
 
-Current drone systems primarily operate through pre-programming or remote control, requiring specific control scripts for different scenarios. They often lack adaptability to unknown environments and mechanisms for accumulating task experience.
+Current drone systems mostly rely on pre-programmed scripts, lacking adaptability to unknown environments. AerialClaw explores endowing drones with **autonomous environmental understanding and real-time decision-making** through LLMs:
 
-AerialClaw explores an alternative technical approach: **Endowing drones with autonomous environmental understanding and decision-making capabilities through LLMs**.
-
-- 🧠 **Reasoning rather than mere execution** — LLM models parse task objectives and generate step-by-step decision sequences
-- 👁️ **Semantic-level environmental understanding** — Converting multi-source sensor data into natural language descriptions to support commonsense-based reasoning
-- 📝 **Flight experience accumulation** — Establishing a task memory repository to support decision optimization based on historical experience
-- 🪪 **Capability boundary awareness** — Maintaining system performance profiles, recording capability boundaries and historical performance
-
-| | Traditional Drone | AerialClaw Drone |
-|:---|:---|:---|
-| **Task Input** | "Execute waypoint list" | "Search this area for survivors" |
-| **On Failure** | Hover or crash | Analyze cause, retry with new strategy |
-| **New Mission** | Rewrite code | A natural language instruction |
-| **Experience** | Every flight starts from scratch | Every flight accumulates experience |
+- 🧠 **Reasoning, not just execution** — LLM parses task objectives and generates step-by-step decisions
+- 👁️ **Semantic-level understanding** — Multi-source sensor data converted to natural language for commonsense reasoning
+- 📝 **Flight experience accumulation** — Task memory repository for history-based decision optimization
+- 🪪 **Capability boundary awareness** — Performance profiles tracking capability boundaries
 
 ## System Architecture Design
 
@@ -71,24 +60,12 @@ AerialClaw explores an alternative technical approach: **Endowing drones with au
   <img src="assets/architecture.png" alt="AerialClaw System Architecture" width="900" />
 </p>
 
-### From OpenClaw to AerialClaw: Research Evolution
-
-The [OpenClaw](https://github.com/openclaw/openclaw) project validated the effectiveness of identity documents and memory reflection mechanisms in conversational agents. AerialClaw builds upon this foundation to further explore: **Can this framework be applied to autonomous mobile platforms with physical constraints?**
-
-| Dimension | OpenClaw (Conversational Agent) | AerialClaw (Autonomous Drone) |
-|---|---|---|
-| Identity Definition | SOUL.md → Dialogue style | SOUL.md → Flight strategy preferences |
-| Memory System | Dialogue history records | MEMORY.md → Task experience repository |
-| Skill Implementation | API calls and text processing | Physical action execution and environmental interaction |
-| Interaction Mode | Responding to user input | Autonomous perception-decision cycle |
-| Learning Mechanism | Learning from dialogue | Learning from flight experience |
-
 ### Core Design Principles
 
-1. **First-person decision perspective** — The system adopts the drone's perspective for decision expression
-2. **Semantic-level sensor fusion** — Converting raw sensor data into semantic descriptions understandable by LLMs
-3. **Document-driven skill definition** — Flight actions and strategies stored as readable documents, supporting dynamic loading
-4. **Hierarchical memory management** — Efficient balancing between long-term experience accumulation and short-term context
+1. **First-person decision perspective** — Drone's own perspective for decision-making
+2. **Semantic-level sensor fusion** — Raw sensor data converted to LLM-understandable descriptions
+3. **Document-driven skill definition** — Actions and strategies as readable documents, dynamically loaded
+4. **Hierarchical memory management** — Long-term experience and short-term context balanced efficiently
 
 ## Decision Mechanism: Autonomous Loop Implementation
 
@@ -361,35 +338,18 @@ AerialClaw/
 
 ## Research Progress and Plans
 
-### Implemented Features
-- [x] Autonomous decision-making cycle framework
-- [x] Identity and state management system
-- [x] Basic flight action skill library
-- [x] Multi-sensor semantic fusion interface
-- [x] Experience accumulation and reflection mechanism
-- [x] PX4+Gazebo simulation integration
-- [x] Web monitoring and interaction interface
+### Implemented
+- [x] Autonomous decision loop · Identity & state management · 12 hard skills + 3 soft skills
+- [x] Passive + active dual-layer perception · Experience reflection · Dynamic skill generation
+- [x] PX4 + Gazebo simulation · Web monitoring & interaction interface
 
-### Current Focus
-- [ ] Performance evaluation in complex scenarios
-- [ ] Stability testing for long-term autonomous missions
-- [ ] Quantitative analysis of decision-making effectiveness
-
-### Future Research Directions
-- [ ] Porting verification to real drone platforms
-- [ ] Integration solutions with ROS2 framework
-- [ ] Simulation-to-reality transfer learning
-- [ ] Exploration of multi-agent collaboration mechanisms
-- [ ] General device framework — standardized protocol adapters for diverse embedded hardware
-- [ ] Safety decision boundaries — action compliance verification, geofencing, and flight envelope constraints for LLM outputs
+### Future Directions
+- [ ] Real drone porting · ROS2 integration · Sim2Real transfer
+- [ ] Multi-agent collaboration · General device framework · Safety decision boundaries
 
 ## Contribution
 
-Researchers in related fields are welcome to participate:
-- **Scenario and Task Design** — Expanding test scenarios and evaluation tasks
-- **Perception Algorithm Improvement** — Optimizing sensor data processing and fusion
-- **Platform Adaptation Extension** — Supporting more drone hardware platforms
-- **Evaluation Benchmark Establishment** — Designing scientific performance evaluation systems
+Issues and PRs welcome. See [docs/](docs/) for developer documentation.
 
 ## License
 
@@ -397,11 +357,7 @@ This project is licensed under the [MIT License](LICENSE).
 
 ## Acknowledgements
 
-The research approach of AerialClaw was inspired by the [OpenClaw](https://github.com/openclaw/openclaw) project, for which we express our gratitude.
+Developed by ROBOTY Lab, School of Computer Science, Xidian University.
 
-The project is built upon the following open source technologies:
+Inspired by [OpenClaw](https://github.com/openclaw/openclaw). Built with:
 [PX4](https://px4.io/) · [Gazebo](https://gazebosim.org/) · [MAVSDK](https://mavsdk.mavlink.io/) · [React](https://react.dev/) · [Vite](https://vitejs.dev/)
-
----
-
-*This project is an academic research-oriented open source initiative aimed at exploring the application potential of LLMs in autonomous mobile platforms.*
