@@ -1,0 +1,12 @@
+/* App.css — 应用级附加样式 */
+/* 全局基础样式已在 index.css 定义 */
+
+/* 覆盖 Vite 默认的 #root 居中布局 */
+#root {
+  max-width: none;
+  margin: 0;
+  padding: 0;
+  text-align: left;
+  height: 100vh;
+  overflow: hidden;
+}

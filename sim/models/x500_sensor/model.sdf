@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<sdf version='1.9'>
+  <model name='x500_sensor'>
+    <!-- 基础 x500 四旋翼 -->
+    <include merge='true'>
+      <uri>x500</uri>
+    </include>
+
+    <!-- OakD-Lite 深度相机 (RGB + Depth) -->
+    <include merge='true'>
+      <uri>model://OakD-Lite</uri>
+      <pose>.12 .03 .242 0 0 0</pose>
+    </include>
+    <joint name="CameraJoint" type="fixed">
+      <parent>base_link</parent>
+      <child>OakD-Lite/base_link</child>
+      <pose relative_to="base_link">.12 .03 .242 0 0 0</pose>
+    </joint>
+
+    <!-- 2D 激光雷达 (用 name 前缀避免 link 名冲突) -->
+    <include merge='true'>
+      <uri>model://lidar_2d_v2</uri>
+      <name>lidar</name>
+      <pose>.12 0 .26 0 0 0</pose>
+    </include>
+    <joint name="LidarJoint" type="fixed">
+      <parent>base_link</parent>
+      <child>lidar/link</child>
+      <pose relative_to="base_link">.12 0 .26 0 0 0</pose>
+    </joint>
+  </model>
+</sdf>

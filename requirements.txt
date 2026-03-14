@@ -1,0 +1,25 @@
+# ============================================================
+# AerialClaw - Python Dependencies
+# ============================================================
+
+# ── Core ─────────────────────────────────────────────────────
+numpy>=1.24.0
+pyyaml>=6.0
+python-dotenv>=1.0.0
+requests>=2.28.0
+
+# ── Web Server ───────────────────────────────────────────────
+flask>=3.0.0
+flask-socketio>=5.3.0
+flask-cors>=4.0.0
+
+# ── Drone Control ────────────────────────────────────────────
+mavsdk>=2.0.0
+pymavlink>=2.4.0
+
+# ── LLM (optional - for Anthropic models) ────────────────────
+# anthropic>=0.20.0
+
+# ── Simulation Sensors ───────────────────────────────────────
+# opencv-python>=4.8.0    # Optional: for camera frame processing
+# Pillow>=10.0.0          # Optional: for image encoding
