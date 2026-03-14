@@ -89,17 +89,34 @@ def _build_perception_summary() -> str:
     return ""
 
 
-def build_system_prompt(world_state: dict, skill_catalog: list[dict]) -> str:
-    """构建完整 system prompt：身份 + 身体认知 + 经验记忆 + 感知摘要 + 技能表 + 环境 + 输出格式。"""
+def build_system_prompt(world_state: dict, skill_catalog: list[dict],
+                        task: str = "", memory_manager=None) -> str:
+    """构建完整 system prompt：身份 + 身体认知 + 经验记忆 + 感知摘要 + 技能表 + 环境 + 输出格式。
+
+    Args:
+        world_state: 世界状态字典
+        skill_catalog: 技能目录列表
+        task: 当前任务描述（用于向量检索相关记忆）
+        memory_manager: MemoryManager 实例（有则用向量检索，无则读 MEMORY.md 文件）
+    """
     skill_table = _build_skill_table(skill_catalog)
     env_summary = _build_env_summary(world_state)
 
     # 读取身份文件
     soul = _read_profile("SOUL.md")
     body = _read_profile("BODY.md")
-    memory = _read_profile("MEMORY.md", max_lines=50)  # 限制长度控制 token
     skills_md = _read_profile("SKILLS.md", max_lines=60)
     world_map = _read_profile("WORLD_MAP.md", max_lines=60)  # 场景地理信息
+
+    # 经验记忆：优先向量检索，降级到全文读取
+    memory = ""
+    if memory_manager and task:
+        try:
+            memory = memory_manager.get_context_for_planning(task)
+        except Exception:
+            memory = _read_profile("MEMORY.md", max_lines=50)
+    else:
+        memory = _read_profile("MEMORY.md", max_lines=50)
 
     # 构建身份段落
     identity_section = ""
@@ -236,6 +253,7 @@ def plan(
     client: LLMClient | None = None,
     two_stage: bool = True,
     on_token: callable = None,
+    memory_manager=None,
 ) -> dict:
     """
     核心规划接口：接收任务指令，返回结构化执行计划。
@@ -254,6 +272,7 @@ def plan(
         skill_registry: SkillRegistry 实例（提供精简技能表）
         client:         LLMClient 实例；为 None 时自动从 config 取 planner 配置
         two_stage:      是否启用两阶段规划，默认 True
+        memory_manager: MemoryManager 实例（用于向量检索相关记忆，可选）
 
     Returns:
         dict: {
@@ -282,8 +301,11 @@ def plan(
     print(f"[PlannerAgent] 技能: {[s['name'] for s in skill_catalog]}")
     print(f"[PlannerAgent] 机器人: {list(world_state.get('robots', {}).keys())}")
     print(f"[PlannerAgent] 两阶段规划: {'开启' if two_stage else '关闭'}")
+    if memory_manager:
+        print(f"[PlannerAgent] 记忆系统: 向量检索模式")
 
-    system_prompt = build_system_prompt(world_state, skill_catalog)
+    system_prompt = build_system_prompt(world_state, skill_catalog,
+                                         task=task, memory_manager=memory_manager)
 
     try:
         # ── Stage 1: L1 摘要表 → 初步 plan ──────────────────────────────

@@ -287,15 +287,19 @@ class ReflectionEngine:
     """
     反思引擎。任务完成后调用 reflect() 进行反思和记忆更新。
 
+    支持两种存储方式（优先向量库，降级到文件）：
+    - 有 memory_manager：反思结果存入向量库（episodic/skill/world）
+    - 无 memory_manager：写入 MEMORY.md / SKILLS.md 文件
+
     用法:
-        engine = ReflectionEngine(llm_client, skill_memory)
+        engine = ReflectionEngine(llm_client, skill_memory, memory_manager)
         reflection = engine.reflect(report, world_state)
-        # MEMORY.md 和 SKILLS.md 自动更新
     """
 
-    def __init__(self, llm_client=None, skill_memory=None):
+    def __init__(self, llm_client=None, skill_memory=None, memory_manager=None):
         self._llm_client = llm_client
         self._skill_memory = skill_memory
+        self._memory_manager = memory_manager
 
     def reflect(self, report, world_state, task_logger=None):
         """
@@ -402,7 +406,7 @@ class ReflectionEngine:
 
         logger.info(f"[ReflectionEngine] 反思完成: {reflection.get('summary', '')}")
 
-        # 更新 MEMORY.md
+        # 更新 MEMORY.md（文件模式，始终执行作为备份）
         try:
             update_memory(reflection)
         except Exception as e:
@@ -414,4 +418,54 @@ class ReflectionEngine:
         except Exception as e:
             logger.error(f"[ReflectionEngine] SKILLS.md 更新失败: {e}")
 
+        # 存入向量记忆库（v2.0 新增）
+        if self._memory_manager:
+            try:
+                self._store_to_vector_memory(reflection, task_name, task_success, skill_trace)
+            except Exception as e:
+                logger.error(f"[ReflectionEngine] 向量记忆存储失败: {e}")
+
         return reflection
+
+    def _store_to_vector_memory(self, reflection, task_name, task_success, skill_trace):
+        """将反思结果存入向量记忆库的各层。"""
+        mm = self._memory_manager
+
+        # 1. 任务经历 → episodic 层
+        summary = reflection.get("summary", "")
+        outcome = reflection.get("outcome_analysis", "")
+        lessons = reflection.get("task_lessons", [])
+        episode_text = f"任务: {task_name}\n结果: {'成功' if task_success else '失败'}\n"
+        if summary:
+            episode_text += f"概要: {summary}\n"
+        if outcome:
+            episode_text += f"分析: {outcome}\n"
+        for lesson in lessons:
+            if lesson and isinstance(lesson, str):
+                episode_text += f"经验: {lesson}\n"
+        mm.store_episode({
+            "task": task_name,
+            "success": task_success,
+            "summary": episode_text,
+        })
+
+        # 2. 技能反馈 → skill 层
+        for fb in reflection.get("skill_feedback", []):
+            skill_name = fb.get("skill_name", "")
+            if not skill_name:
+                continue
+            perf = fb.get("performance", "")
+            suggestion = fb.get("suggestion", "")
+            skill_text = f"技能: {skill_name} 表现: {perf}"
+            if suggestion:
+                skill_text += f" 建议: {suggestion}"
+            mm.update_skill_stats(
+                skill_name,
+                success=(perf in ("good", "acceptable")),
+                cost_time=0,
+            )
+
+        # 3. 环境知识 → world 层
+        for insight in reflection.get("environment_insights", []):
+            if insight and isinstance(insight, str) and insight.strip():
+                mm.store_world_knowledge(insight, source=f"reflect:{task_name}")
