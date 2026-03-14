@@ -24,6 +24,25 @@ Developed by ROBOTY Lab, School of Computer Science, Xidian University, the proj
 ---
 ---
 
+## 📑 Table of Contents
+
+- [📢 Update](#-update)
+- [Research Background and Motivation](#research-background-and-motivation)
+- [System Architecture Design](#system-architecture-design)
+- [Decision Mechanism](#decision-mechanism-autonomous-loop-implementation)
+- [Integrated Skill System](#integrated-skill-system)
+- [Perception System](#perception-system)
+- [Simulation Verification Environment](#simulation-verification-environment)
+- [Web Monitoring Interface](#web-monitoring-interface)
+- [Installation and Deployment](#installation-and-deployment) — Full setup from scratch
+- [Quick Start](#quick-start) — Launch with 4 terminals
+- [Project Structure](#project-structure)
+- [Research Progress and Plans](#research-progress-and-plans)
+- [Contribution](#contribution)
+- [Acknowledgments](#acknowledgments)
+
+---
+
 ## 📢 Update
 
 - **(2026/3/14)** AerialClaw v1.0 released — full agent loop, 12 hard skills, reflection engine, Web UI, PX4+Gazebo simulation.
