@@ -1,0 +1,139 @@
+# sim_config.yaml
+# 仿真配置文件
+# 
+# 配置说明：
+#   - simulation.backend: 仿真后端类型 (airsim/px4/hybrid)
+#   - vehicles: 无人机编队配置
+# 
+# 使用方式：
+#   python launch/sim_launch.py --config config/sim_config.yaml
+
+simulation:
+  # 仿真后端类型: airsim | px4 | hybrid
+  #   - airsim: 仅使用 AirSim (仅感知)
+  #   - px4: 仅使用 PX4 SITL (控制 + 姿态)
+  #   - hybrid: AirSim + PX4 混合 (推荐)
+  backend: px4
+  
+  # 状态同步间隔 (秒)
+  sync_interval: 0.1
+  
+  # AirSim 配置
+  airsim:
+    # AirSim 服务器 IP 地址
+    #   - Docker 内部: 127.0.0.1
+    #   - Mac 宿主机连容器: host.docker.internal
+    #   - UTM VM: VM 的 IP 地址 (通常 192.168.64.x)
+    #   - 远程仿真: 修改为实际 IP
+    ip: "127.0.0.1"
+    
+    # AirSim 服务器端口
+    port: 41451
+    
+    # API 超时时间 (毫秒)
+    timeout_ms: 30000
+  
+  # PX4 SITL 配置
+  px4:
+    # PX4 命名空间
+    namespace: "/px4"
+    
+    # uXRCE-DDS 客户端配置
+    uxrce:
+      # DDS 域 ID
+      domain_id: 0
+      
+      # 客户端密钥 (可选)
+      client_key: null
+
+# 无人机编队配置
+# 可配置多架无人机，每架无人机可指定不同的后端
+vehicles:
+  # 第一架无人机 - PX4 后端
+  - id: "UAV_1"
+    type: "UAV"                    # UAV (无人机) | UGV (无人车)
+    position: [0, 0, 0]            # 初始位置 [x, y, z] (NED 坐标系)
+    backend: px4                   # 使用的仿真后端 (airsim | px4)
+    
+    # 无人机参数 (可选)
+    params:
+      max_speed: 5.0               # 最大飞行速度 (m/s)
+      max_altitude: 100.0          # 最大飞行高度 (m)
+      battery_capacity: 5200       # 电池容量 (mAh)
+  
+  # 第二架无人机 - AirSim 后端 (仅用于感知测试)
+  # - id: "UAV_2"
+  #   type: "UAV"
+  #   position: [10, 0, 0]
+  #   backend: airsim
+  #   params:
+  #     max_speed: 5.0
+
+# ROS2 话题映射配置
+ros2:
+  # 话题命名空间
+  namespace: "/aerialclaw"
+  
+  # 话题映射
+  topics:
+    # PX4 话题
+    px4:
+      in:
+        offboard_control: "/px4/fmu/in/offboard_control_mode"
+        trajectory_setpoint: "/px4/fmu/in/trajectory_setpoint"
+        vehicle_command: "/px4/fmu/in/vehicle_command"
+      out:
+        local_position: "/px4/fmu/out/vehicle_local_position"
+        vehicle_status: "/px4/fmu/out/vehicle_status"
+        battery_status: "/px4/fmu/out/battery_status"
+    
+    # 内部话题
+    internal:
+      world_state: "/aerialclaw/world_state"
+      skill_result: "/aerialclaw/skill_result"
+
+# 任务配置
+tasks:
+  # 默认任务配置
+  default:
+    # 任务超时时间 (秒)
+    timeout: 300
+    
+    # 技能执行重试次数
+    max_retries: 2
+    
+    # 任务失败策略: abort | continue | retry
+    failure_policy: abort
+
+# 日志配置
+logging:
+  # 日志级别: DEBUG | INFO | WARNING | ERROR
+  level: INFO
+  
+  # 日志文件路径 (可选)
+  # file: "logs/sim_launch.log"
+  
+  # 是否显示时间戳
+  timestamp: true
+  
+  # 是否显示彩色输出
+  color: true
+
+# 高级配置 (通常不需要修改)
+advanced:
+  # 模拟模式: true 时忽略所有仿真连接，使用模拟数据
+  mock_mode: false
+  
+  # 仿真时间加速因子
+  #   1.0 = 实时
+  #   2.0 = 2倍速
+  time_scale: 1.0
+  
+  # 是否启用状态自动同步
+  auto_sync: true
+  
+  # 传感器数据噪声配置
+  sensor_noise:
+    enabled: false
+    gps_stddev: 0.5        # GPS 位置标准差 (m)
+    imu_noise_level: 0.01  # IMU 噪声等级

@@ -1,0 +1,166 @@
+/* ── 全局重置 ─────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg:         #0a0e1a;
+  --bg-panel:   #0f1525;
+  --bg-card:    #141c30;
+  --bg-hover:   #1a2540;
+  --border:     #1e2d4a;
+  --border-hi:  #2a4070;
+  --accent:     #00d4ff;
+  --accent2:    #7c3aed;
+  --success:    #22c55e;
+  --warning:    #f59e0b;
+  --danger:     #ef4444;
+  --info:       #3b82f6;
+  --text:       #e2e8f0;
+  --text-dim:   #64748b;
+  --text-muted: #475569;
+  --font:       'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+  --radius:     6px;
+  --glow:       0 0 12px rgba(0,212,255,0.25);
+}
+
+html, body { height: 100%; }
+
+body {
+  font-family: var(--font);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.5;
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+#root { height: 100vh; display: flex; flex-direction: column; }
+
+/* ── 滚动条 ──────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: var(--bg); }
+::-webkit-scrollbar-thumb { background: var(--border-hi); border-radius: 2px; }
+::-webkit-scrollbar-thumb:hover { background: var(--accent); }
+
+/* ── 通用卡片 ────────────────────────────────────────────── */
+.card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px;
+}
+
+/* ── 按钮 ────────────────────────────────────────────────── */
+.btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 14px;
+  border: 1px solid var(--border-hi);
+  border-radius: var(--radius);
+  background: var(--bg-card);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all .15s;
+  white-space: nowrap;
+  user-select: none;
+}
+.btn:hover:not(:disabled) {
+  background: var(--bg-hover);
+  border-color: var(--accent);
+  color: var(--accent);
+  box-shadow: var(--glow);
+}
+.btn:active:not(:disabled) { transform: scale(.97); }
+.btn:disabled { opacity: .4; cursor: not-allowed; }
+.btn.primary {
+  background: rgba(0,212,255,.12);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.btn.primary:hover:not(:disabled) { background: rgba(0,212,255,.22); }
+.btn.danger {
+  background: rgba(239,68,68,.12);
+  border-color: var(--danger);
+  color: var(--danger);
+}
+.btn.danger:hover:not(:disabled) { background: rgba(239,68,68,.22); }
+.btn.success {
+  background: rgba(34,197,94,.12);
+  border-color: var(--success);
+  color: var(--success);
+}
+.btn.success:hover:not(:disabled) { background: rgba(34,197,94,.22); }
+.btn.ai-mode {
+  background: rgba(124,58,237,.12);
+  border-color: var(--accent2);
+  color: #a78bfa;
+}
+.btn.ai-mode:hover:not(:disabled) { background: rgba(124,58,237,.22); }
+
+/* ── 徽章 ────────────────────────────────────────────────── */
+.badge {
+  display: inline-block;
+  padding: 1px 7px;
+  border-radius: 99px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: .5px;
+  text-transform: uppercase;
+}
+.badge.idle      { background: rgba(100,116,139,.2); color: #94a3b8; border: 1px solid #334155; }
+.badge.executing { background: rgba(245,158,11,.15); color: var(--warning); border: 1px solid rgba(245,158,11,.4); animation: pulse 1s infinite; }
+.badge.error     { background: rgba(239,68,68,.15);  color: var(--danger);  border: 1px solid rgba(239,68,68,.4); }
+.badge.success   { background: rgba(34,197,94,.15);  color: var(--success); border: 1px solid rgba(34,197,94,.4); }
+.badge.uav       { background: rgba(0,212,255,.12);  color: var(--accent);  border: 1px solid rgba(0,212,255,.3); }
+.badge.ugv       { background: rgba(124,58,237,.12); color: #a78bfa;        border: 1px solid rgba(124,58,237,.3); }
+.badge.manual    { background: rgba(59,130,246,.15); color: #60a5fa;        border: 1px solid rgba(59,130,246,.4); }
+.badge.ai        { background: rgba(124,58,237,.15); color: #a78bfa;        border: 1px solid rgba(124,58,237,.4); }
+.badge.hard      { background: rgba(245,158,11,.12); color: #fbbf24;        border: 1px solid rgba(245,158,11,.3); }
+.badge.soft      { background: rgba(34,197,94,.12);  color: #4ade80;        border: 1px solid rgba(34,197,94,.3); }
+.badge.perception{ background: rgba(0,212,255,.10);  color: #67e8f9;        border: 1px solid rgba(0,212,255,.2); }
+.badge.never     { background: rgba(100,116,139,.15);color: #64748b;        border: 1px solid #334155; }
+.badge.online    { background: rgba(34,197,94,.12);  color: var(--success); border: 1px solid rgba(34,197,94,.3); }
+.badge.offline   { background: rgba(239,68,68,.12);  color: var(--danger);  border: 1px solid rgba(239,68,68,.3); }
+
+/* ── 动画 ────────────────────────────────────────────────── */
+@keyframes pulse {
+  0%,100% { opacity: 1; }
+  50%      { opacity: .5; }
+}
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes blink {
+  0%,100% { opacity: 1; }
+  50%      { opacity: 0; }
+}
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ── 输入框 ──────────────────────────────────────────────── */
+input, textarea, select {
+  background: var(--bg);
+  border: 1px solid var(--border-hi);
+  border-radius: var(--radius);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 12px;
+  padding: 6px 10px;
+  outline: none;
+  transition: border-color .15s;
+  width: 100%;
+}
+input:focus, textarea:focus, select:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(0,212,255,.12);
+}
+
+/* ── 分隔线 ──────────────────────────────────────────────── */
+.divider {
+  height: 1px;
+  background: var(--border);
+  margin: 8px 0;
+}
