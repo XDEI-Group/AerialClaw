@@ -1789,6 +1789,32 @@ def _world_state_broadcaster():
             socketio.emit("world_state", state.get_world_snapshot())
 
 
+# ── Doctor API ────────────────────────────────────────────────────────────────
+
+@app.route("/api/doctor/run", methods=["GET"])
+def api_doctor_run():
+    """执行系统健康检查，返回报告"""
+    try:
+        from core.doctor import create_doctor
+        doctor = create_doctor()
+        report = doctor.run()
+        return jsonify(report.to_dict())
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@socketio.on("run_doctor")
+def on_run_doctor():
+    """WebSocket 触发健康检查"""
+    try:
+        from core.doctor import create_doctor
+        doctor = create_doctor()
+        report = doctor.run()
+        emit("doctor_report", report.to_dict())
+    except Exception as e:
+        emit("doctor_report", {"error": str(e)})
+
+
 # ── 启动 ──────────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
