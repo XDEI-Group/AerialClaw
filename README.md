@@ -168,78 +168,171 @@ The system supports **real-time Manual / AI mode switching**, allowing operators
 ### Environment Requirements
 
 - Python >= 3.10, Node.js >= 18
-- [PX4 Autopilot](https://docs.px4.io/main/en/dev_setup/building_px4.html) v1.15+
-- [Gazebo Harmonic](https://gazebosim.org/docs/harmonic/install)
-- [Micro XRCE-DDS Agent](https://github.com/eProsima/Micro-XRCE-DDS-Agent)
-- MAVSDK-Python (`pip install mavsdk`)
+- CMake >= 3.22
+- Git
 
-### Installation Steps
+### Step 1: Clone Repository
 
 ```bash
-# Clone the repository
 git clone https://github.com/XDEI-Group/AerialClaw.git
 cd AerialClaw
+```
 
-# Configure Python environment
+### Step 2: Python Environment
+
+```bash
 python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
+```
 
-# Build the web interface
+### Step 3: Build Web Interface
+
+```bash
 cd ui
 npm install
 npm run build
 cd ..
 ```
 
-### LLM Service Configuration
+### Step 4: Configure LLM
 
-Modify the `config.py` configuration file:
-
-```python
-ACTIVE_PROVIDER = "ollama_local"   # Local model service
-# ACTIVE_PROVIDER = "openai"       # OpenAI compatible API
-MODULE_CONFIG["vlm"]["provider"] = "gpt4o_vlm"  # Visual understanding model
+```bash
+cp .env.example .env
 ```
+
+Edit `.env` with your LLM service credentials:
+
+```bash
+ACTIVE_PROVIDER=openai                    # or: ollama_local / deepseek / moonshot
+LLM_BASE_URL=https://api.openai.com/v1   # API endpoint
+LLM_API_KEY=sk-your-key-here              # API key
+LLM_MODEL=gpt-4o                          # Model name
+```
+
+Supports OpenAI, DeepSeek, Moonshot, local Ollama, or any OpenAI-compatible API. See [docs/LLM_CONFIG.md](docs/LLM_CONFIG.md) for details.
+
+### Step 5: Set Up PX4 Simulation
+
+One-click script handles PX4 cloning, patching, custom model installation, and compilation:
+
+```bash
+./scripts/setup_px4.sh
+```
+
+This script automatically:
+- Clones PX4-Autopilot from the official repository
+- Applies AerialClaw parameter patches (magnetometer, no-RC mode, etc.)
+- Installs custom drone model (x500_sensor: 5 cameras + 3D LiDAR)
+- Installs custom Gazebo world (urban_rescue)
+- Builds PX4 SITL
+
+> First build takes approximately 10-30 minutes. For macOS ARM64 troubleshooting, see [docs/SIMULATION_SETUP.md](docs/SIMULATION_SETUP.md).
 
 ## Quick Start
 
+Start four terminals in order:
+
+**Terminal 1 — Simulation**
 ```bash
-# Start simulation environment
-./scripts/start_gz_sim.sh urban_rescue
-
-# Start MAVSDK service
-mavsdk_server -p 50051 udp://:14540
-
-# Start AerialClaw main service
-python server.py
-
-# Access web interface
-# http://localhost:8000
+cd ../PX4-Autopilot
+export CMAKE_POLICY_VERSION_MINIMUM=3.5
+export PX4_GZ_WORLD=urban_rescue
+make px4_sitl gz_x500
 ```
 
-Test system functionality with natural language commands:
-- *"Take off to 15 meters altitude and observe the environment"*
-- *"Search for anomalies in the area"*
-- *"Report current battery status"*
+**Terminal 2 — MAVSDK Server**
+```bash
+mavsdk_server -p 50051 udp://:14540
+```
+
+**Terminal 3 — AerialClaw Service**
+```bash
+cd AerialClaw
+source venv/bin/activate
+python server.py
+```
+
+**Terminal 4 — Browser**
+```
+http://localhost:5001
+```
+
+In the Web UI:
+1. Click "⚡ Initialize System"
+2. Switch to "🤖 AI" mode (top right)
+3. Test with natural language commands:
+   - *"Take off to 15 meters and observe the surroundings"*
+   - *"Search the northern area, photograph any targets found"*
+   - *"Report current battery and position"*
 
 ## Project Structure
 
 ```
 AerialClaw/
-├── brain/                    # Core decision-making modules
-├── perception/               # Perception processing modules
-├── skills/                   # Skill library
-│   ├── hard_skills.py        # Basic action implementations
-│   ├── docs/                 # Skill documents
-│   └── soft_docs/            # Scenario strategy documents
-├── memory/                   # Memory and learning modules
-├── robot_profile/            # State configuration files
-├── adapters/                 # Hardware adaptation layer
-├── sim/                      # Simulation interfaces
-├── ui/                       # Web interface
-├── server.py                 # Service entry point
-└── config.py                 # Configuration files
+├── server.py                    # Service entry point
+├── config.py                    # Global config (reads from .env)
+├── llm_client.py                # Multi-provider LLM client
+├── .env.example                 # Environment variable template
+├── requirements.txt             # Python dependencies
+│
+├── brain/                       # Decision-making core
+│   ├── agent_loop.py            #   Autonomous decision loop
+│   ├── planner_agent.py         #   LLM task planner
+│   └── chat_mode.py             #   Conversational mode
+│
+├── perception/                  # Perception system
+│   ├── daemon.py                #   Passive perception daemon
+│   ├── vlm_analyzer.py          #   Active visual analysis (VLM)
+│   ├── prompts.py               #   Perception prompts
+│   └── gz_camera.py             #   Gazebo camera bridge
+│
+├── skills/                      # Skill library
+│   ├── hard_skills.py           #   Hard skill implementations
+│   ├── soft_skills.py           #   Soft skill executor
+│   ├── docs/                    #   Hard skill documents (13)
+│   ├── soft_docs/               #   Soft skill strategy docs (3)
+│   └── dynamic_skill_gen.py     #   Dynamic skill generation
+│
+├── memory/                      # Memory and learning
+│   ├── reflection_engine.py     #   Reflection engine
+│   ├── skill_evolution.py       #   Skill evolution
+│   ├── world_model.py           #   World model
+│   └── task_log.py              #   Task logger
+│
+├── robot_profile/               # Identity documents
+│   ├── SOUL.md / BODY.md        #   Personality & hardware description
+│   ├── MEMORY.md / SKILLS.md    #   Experience & skill self-description
+│   └── WORLD_MAP.md             #   Environment map
+│
+├── adapters/                    # Hardware adaptation layer
+│   ├── base_adapter.py          #   Abstract interface
+│   ├── px4_adapter.py           #   PX4 adapter
+│   ├── sim_adapter.py           #   Simulation adapter
+│   └── mock_adapter.py          #   Mock testing adapter
+│
+├── sim/                         # Simulation resources
+│   ├── models/x500_sensor/      #   Custom drone model (5 cameras + LiDAR)
+│   ├── worlds/urban_rescue.sdf  #   Custom Gazebo world
+│   ├── airframes/               #   Custom airframe
+│   └── px4_patches.diff         #   PX4 customization patches
+│
+├── ui/                          # Web monitoring interface (React)
+│   └── src/components/          #   9 React components
+│
+├── scripts/                     # Scripts
+│   ├── setup_px4.sh             #   One-click PX4 install + patch
+│   └── start_gz_sim.sh          #   One-click simulation launcher
+│
+├── docs/                        # Developer documentation
+│   ├── ARCHITECTURE.md          #   System architecture
+│   ├── SIMULATION_SETUP.md      #   Simulation environment setup
+│   ├── ADAPTER_GUIDE.md         #   Adapter integration guide
+│   ├── SKILL_GUIDE.md           #   Skill development guide
+│   ├── PERCEPTION_GUIDE.md      #   Perception module guide
+│   └── LLM_CONFIG.md            #   LLM configuration guide
+│
+└── assets/                      # Images and demo resources
 ```
 
 ## Research Progress and Plans
