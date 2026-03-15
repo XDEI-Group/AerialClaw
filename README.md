@@ -32,6 +32,10 @@ The project uses Markdown documents to define and maintain each agent's cognitiv
 - [Decision Mechanism](#decision-mechanism-autonomous-loop-implementation)
 - [Skill System](#integrated-skill-system)
 - [Perception System](#perception-system)
+- [Safety Architecture](#safety-architecture)
+- [Memory System](#memory-system)
+- [Universal Device Protocol](#universal-device-protocol)
+- [Self-Evolution](#self-evolution)
 - [Simulation Environment](#simulation-verification-environment)
 - [Web Monitoring Interface](#web-monitoring-interface)
 - [Installation and Deployment](#installation-and-deployment)
@@ -43,6 +47,7 @@ The project uses Markdown documents to define and maintain each agent's cognitiv
 
 ## 📢 Update
 
+- **(2026/3/15)** AerialClaw v2.0 released — safety envelope, four-layer memory, universal device protocol, self-evolution engine, hybrid deployment.
 - **(2026/3/14)** AerialClaw v1.0 released — full agent loop, 12 hard skills, reflection engine, Web UI, PX4+Gazebo simulation.
 
 ## Research Background and Motivation
@@ -155,6 +160,99 @@ This design supports research across various application scenarios:
 - 🌲 **Ecological Monitoring** — Anomaly detection in forested areas
 - 🏗️ **Facility Inspection** — Safety inspection of building structures
 - 🌾 **Agricultural Observation** — Assessment of crop growth status
+
+## Safety Architecture
+
+AerialClaw treats safety as a **hardware-level guarantee**, not an LLM-level policy. Four sequential gates protect every command:
+
+```
+Command → [Gate 1: Filter] → [Gate 2: Sandbox] → [Gate 3: Approval] → [Gate 4: Envelope] → Execution
+```
+
+| Gate | Mechanism | Description |
+|------|-----------|-------------|
+| **1. Command Filter** | Whitelist / Blacklist | Blocks prohibited commands before reaching the planner |
+| **2. Sandbox Isolation** | Docker → subprocess → restricted (auto-downgrade) | Code execution never touches the host system |
+| **3. Tiered Approval** | `auto` / `confirm` / `deny` | Operator-configurable per-action authorization level |
+| **4. Safety Envelope** | Hard-coded physical limits | LLM cannot override — enforced at the adapter layer |
+
+**Safety Envelope Parameters** (hard-coded, LLM-unreachable):
+
+| Limit | Value |
+|-------|-------|
+| Max speed | 10 m/s |
+| Max altitude | 120 m |
+| Battery RTL threshold | 15% |
+| Battery forced-land threshold | 5% |
+| Heartbeat timeout | 10 s |
+
+**"Spinal Cord" Architecture**: The LLM is the brain (capable of mistakes); the safety envelope is the spinal cord (hard-coded reflexes). Even a hallucinating LLM cannot command the drone beyond physical safety limits.
+
+- **Audit Log**: All commands, decisions, and safety interventions are recorded and exportable.
+- **Safety Levels**: Switch between `strict` / `standard` / `permissive` with a single config change.
+
+## Memory System
+
+The four-layer memory architecture balances immediate context, accumulated experience, and semantic retrieval:
+
+```
+┌─────────────────────────────────────────────────┐
+│  Working Memory    — Current task context        │  Short-term, cleared per task
+├─────────────────────────────────────────────────┤
+│  Episodic Memory   — Task histories & outcomes  │  Persistent, retrieved by similarity
+├─────────────────────────────────────────────────┤
+│  Skill Memory      — Execution statistics        │  Success rates, failure patterns
+├─────────────────────────────────────────────────┤
+│  World Knowledge   — Environmental discoveries  │  Landmarks, hazards, map features
+└─────────────────────────────────────────────────┘
+```
+
+- **Vector Semantic Retrieval** — `chromadb` primary with `TF-IDF` auto-fallback; no external service required
+- **Reflection Engine** — After each task: task log → LLM reflection → memory update → informs next planning cycle
+- **Planning-time Retrieval** — Relevant past experiences fetched and injected at planning time, replacing full-history injection to control token usage
+- **Cross-task Transfer** — Experience from one platform or scenario generalizes to similar future tasks
+
+## Universal Device Protocol
+
+Any device implementing this protocol can be controlled by AerialClaw — no custom adapter required for basic operations.
+
+**Dual-channel communication**: HTTP REST (commands & registration) + WebSocket (real-time telemetry)
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/devices/register` | POST | Device registration with capability declaration |
+| `/devices/{id}/status` | POST | Status reporting |
+| `/devices/{id}/sensors` | POST | Sensor data upload |
+| `/devices/{id}/command` | POST | Command dispatch |
+| `/devices/{id}/heartbeat` | POST | Keep-alive (10 s timeout → auto-offline) |
+
+- **Token authentication** on all endpoints
+- **Heartbeat watchdog**: 10-second timeout triggers automatic device-offline status
+- **Three client templates** included: Python · Arduino (ESP32) · ROS2 — see [`clients/README.md`](clients/README.md)
+
+## Self-Evolution
+
+AerialClaw can extend its own capabilities when encountering new devices or skill gaps:
+
+**Device Analyzer** — When a new device is registered:
+1. LLM analyzes the device's declared capabilities
+2. Auto-generates a `BODY.md` tailored to the device
+3. Matches against existing skills; flags gaps for generation
+
+**Code Generator** — For `software`-class capability gaps:
+1. LLM generates a Python adapter from scratch
+2. Runs in sandbox — automatic self-repair on failure
+3. Deploys to the adapter library on success
+
+**Skill Evolver** — Continuous skill improvement:
+1. Analyzes per-skill performance statistics from `SKILLS.md`
+2. LLM proposes strategy improvements; under-performing skills are retired
+3. New strategy documents are promoted automatically
+
+**Capability Gap Detection** — Three-layer defense before execution:
+- `software` gap → trigger code generation pipeline
+- `hardware` gap → reject with clear explanation; no hallucinated execution
+- "Onboarding a new platform" is itself a soft skill that can run end-to-end automatically
 
 ## Simulation Verification Environment
 
@@ -386,13 +484,19 @@ AerialClaw/
 ## Research Progress and Plans
 
 ### Implemented
-- [x] Autonomous decision loop · Identity & state management · 12 hard skills + 3 soft skills
-- [x] Passive + active dual-layer perception · Experience reflection · Dynamic skill generation
-- [x] PX4 + Gazebo simulation · Web monitoring & interaction interface
+- [x] Autonomous decision loop · Identity & state management · 12 motor skills + 4 cognitive skills + 3 soft skills
+- [x] Passive + active dual-layer perception · Experience reflection · Dynamic skill generation · Skill retirement
+- [x] PX4 + Gazebo simulation · Web monitoring & interaction · Cockpit FPV
+- [x] Four-layer memory system · Vector semantic retrieval · Cross-task experience transfer
+- [x] Universal device protocol (HTTP + WebSocket) · Three-platform client templates
+- [x] Four-gate safety system · Hard-coded safety envelope · Operation audit log
+- [x] Adaptive sandbox · Cognitive skills · Capability gap detection
+- [x] Self-evolution · LLM device analysis · Adapter auto-generation
+- [x] Hybrid deployment · Offline emergency mode · Edge-cloud coordination
 
 ### Future Directions
 - [ ] Real drone porting · ROS2 integration · Sim2Real transfer
-- [ ] Multi-agent collaboration · General device framework · Safety decision boundaries
+- [ ] Multi-agent collaboration · Shared world model
 
 ## Contribution
 
