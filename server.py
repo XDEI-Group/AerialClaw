@@ -218,18 +218,16 @@ def _do_init():
         )
 
         state.initialized = True
-        state.push_log("success", "✅ 系统初始化完成，可以开始控制")
+        state.push_log("success", "✅ 系统初始化完成，等待设备接入")
+        state.push_log("info", "💡 仿真设备: cd simulator && python sim_client.py")
 
         # 推送初始世界状态
         socketio.emit("world_state", state.get_world_snapshot())
         socketio.emit("skill_catalog", _get_skill_catalog())
         socketio.emit("system_status", _get_system_status())
 
-        # 连接仿真适配器，并启动遥测同步
-        _try_connect_adapter()
-
-        # 启动传感器桥接
-        _start_sensor_bridge()
+        # 启动设备管理器
+        _get_device_manager()
 
     except Exception as e:
         logger.exception("初始化失败")
