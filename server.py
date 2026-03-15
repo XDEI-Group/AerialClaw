@@ -1867,12 +1867,22 @@ def api_safety_audit():
 
 # ── Memory API ────────────────────────────────────────────────────────────────
 
+_memory_manager_singleton = None
+
+def _get_memory_manager():
+    """记忆管理器单例，避免重复初始化"""
+    global _memory_manager_singleton
+    if _memory_manager_singleton is None:
+        from memory.memory_manager import MemoryManager
+        _memory_manager_singleton = MemoryManager()
+    return _memory_manager_singleton
+
+
 @app.route("/api/memory/stats", methods=["GET"])
 def api_memory_stats():
     """记忆系统统计"""
     try:
-        from memory.memory_manager import MemoryManager
-        mm = MemoryManager()
+        mm = _get_memory_manager()
         return jsonify({
             "ok": True,
             "layers": {
@@ -1894,14 +1904,12 @@ def api_memory_stats():
 @app.route("/api/memory/recent", methods=["GET"])
 def api_memory_recent():
     """最近记忆"""
-    limit = int(request.args.get("limit", 20))
     try:
-        from memory.memory_manager import MemoryManager
-        mm = MemoryManager()
-        items = mm.recall("", top_k=limit)
+        mm = _get_memory_manager()
+        items = mm.working.get_recent(20)
         return jsonify({"ok": True, "items": [
-            {"text": i.text, "score": i.score, "layer": i.metadata.get("layer", "unknown"),
-             "metadata": i.metadata} for i in items
+            {"text": str(item), "score": 0, "layer": "working", "metadata": {}}
+            for item in items
         ]})
     except Exception as e:
         return jsonify({"ok": True, "items": []})
@@ -1916,8 +1924,7 @@ def api_memory_search():
     if not query:
         return jsonify({"ok": False, "error": "query 不能为空"}), 400
     try:
-        from memory.memory_manager import MemoryManager
-        mm = MemoryManager()
+        mm = _get_memory_manager()
         items = mm.recall(query, top_k=top_k)
         return jsonify({"ok": True, "query": query, "items": [
             {"text": i.text, "score": i.score, "layer": i.metadata.get("layer", "unknown"),
