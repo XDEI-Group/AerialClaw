@@ -193,6 +193,7 @@ class AgentRuntime:
     def dispatch_skill(self, step: dict) -> ExecutionResult:
         """
         分派单步技能执行指令给 Executor。
+        执行前进行能力缺口检测，不存在的技能直接拦截。
 
         Args:
             step: 单步计划字典，格式：
@@ -209,6 +210,31 @@ class AgentRuntime:
         robot_id = step.get("robot", "")
         skill_name = step.get("skill", "")
         parameters = step.get("parameters", {})
+
+        # ── 能力缺口检测 ────────────────────────────────────
+        registry = self._robot_registries.get(robot_id)
+        if registry and skill_name:
+            try:
+                from core.capability_gap import CapabilityGapDetector
+                detector = CapabilityGapDetector(registry)
+                available = detector.get_available_skills()
+                if skill_name not in available:
+                    gap = detector.analyze_gap(skill_name)
+                    error_msg = (
+                        f"技能 '{skill_name}' 不存在。"
+                        f"缺口类型: {gap.gap_type}。{gap.reason}"
+                    )
+                    if gap.auto_fillable:
+                        error_msg += f" (建议: {gap.suggestion})"
+                    return ExecutionResult(
+                        success=False,
+                        skill=skill_name,
+                        robot=robot_id,
+                        error_msg=error_msg,
+                        logs=[f"[CapabilityGap] {error_msg}"],
+                    )
+            except ImportError:
+                pass
 
         return self._executor.execute_skill(robot_id, skill_name, parameters)
 

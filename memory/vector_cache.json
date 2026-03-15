@@ -43,6 +43,24 @@
         "success": "True",
         "summary": "在北部发现了目标"
       }
+    },
+    "a8db31b9-db9b-404a-8338-99510cdf1bcd": {
+      "text": "任务：北部侦察 | 结果：unknown | 耗时：0.0s",
+      "embedding": [
+        0.408248290463863,
+        0.408248290463863,
+        0.408248290463863,
+        0.408248290463863,
+        0.408248290463863,
+        0.408248290463863
+      ],
+      "metadata": {
+        "type": "episode",
+        "timestamp": 1773546842.8243032,
+        "task": "北部侦察",
+        "success": "True",
+        "summary": "发现目标"
+      }
     }
   },
   "world": {
@@ -55,6 +73,54 @@
         "type": "world",
         "source": "观察",
         "timestamp": 1773525071.068647
+      }
+    },
+    "5337cc63-056c-4544-8add-177646f3c3ca": {
+      "text": "北部有废弃建筑",
+      "embedding": [
+        1.0
+      ],
+      "metadata": {
+        "type": "world",
+        "source": "观察",
+        "timestamp": 1773546842.8246138
+      }
+    }
+  },
+  "vtest": {
+    "040d3e81-7e27-4c61-8b8f-08db2f8d4cbc": {
+      "text": "无人机在北部发现红色目标",
+      "embedding": [
+        1.0
+      ],
+      "metadata": {}
+    },
+    "e1c84909-b463-4185-8b37-a0f6bd988ef5": {
+      "text": "南部地形平坦适合降落",
+      "embedding": [
+        0.0,
+        1.0
+      ],
+      "metadata": {}
+    }
+  },
+  "skill": {
+    "11a6fe2e-9bdd-40af-a0dc-e8ada6e5bc04": {
+      "text": "技能 fly_to 执行成功，耗时 3.50s",
+      "embedding": [
+        0.408248290463863,
+        0.408248290463863,
+        0.408248290463863,
+        0.408248290463863,
+        0.408248290463863,
+        0.408248290463863
+      ],
+      "metadata": {
+        "type": "skill_stat",
+        "skill": "fly_to",
+        "success": true,
+        "cost_time": 3.5,
+        "timestamp": 1773546842.824394
       }
     }
   }
