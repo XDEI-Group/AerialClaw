@@ -191,6 +191,218 @@ function SensorValueCard({ label, value }) {
   )
 }
 
+// ── AI 建档对话区 ─────────────────────────────────────────────────────────────
+function OnboardChat({ deviceId }) {
+  const [open, setOpen]               = useState(false)
+  const [messages, setMessages]       = useState([])
+  const [input, setInput]             = useState('')
+  const [sending, setSending]         = useState(false)
+  const [profileReady, setProfileReady] = useState(false)
+  const historyRef = useRef(null)
+
+  useEffect(() => {
+    if (historyRef.current) {
+      historyRef.current.scrollTop = historyRef.current.scrollHeight
+    }
+  }, [messages, sending])
+
+  const sendMessage = async () => {
+    const text = input.trim()
+    if (!text || sending) return
+    setInput('')
+    setMessages(prev => [...prev, { role: 'user', text }])
+    setSending(true)
+    try {
+      const res = await fetch(`/api/device/${deviceId}/onboard`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: text }),
+      })
+      const data = await res.json()
+      setMessages(prev => [...prev, { role: 'ai', text: data.reply || '…' }])
+      if (data.profile_ready) setProfileReady(true)
+    } catch (e) {
+      setMessages(prev => [...prev, { role: 'ai', text: '请求失败: ' + e.message }])
+    } finally {
+      setSending(false)
+    }
+  }
+
+  return (
+    <div style={{ ...S.card, flexShrink: 0 }}>
+      <div
+        style={{ display: 'flex', alignItems: 'center', cursor: 'pointer', userSelect: 'none' }}
+        onClick={() => setOpen(v => !v)}
+      >
+        <span style={{ fontSize: 14, marginRight: 6 }}>🤖</span>
+        <span style={{ ...S.sectionTitle, marginBottom: 0, flex: 1 }}>AI 建档</span>
+        {profileReady && (
+          <span style={{
+            fontSize: 11, color: '#4ade80',
+            background: 'rgba(34,197,94,.1)', border: '1px solid rgba(34,197,94,.3)',
+            borderRadius: 99, padding: '1px 8px', marginRight: 8,
+          }}>
+            建档完成
+          </span>
+        )}
+        <span style={{ color: '#475569', fontSize: 12 }}>{open ? '▲' : '▼'}</span>
+      </div>
+
+      {open && (
+        <div style={{ marginTop: 10 }}>
+          {/* 对话历史 */}
+          <div
+            ref={historyRef}
+            style={{
+              maxHeight: 250, overflowY: 'auto',
+              display: 'flex', flexDirection: 'column', gap: 8,
+              marginBottom: 10, paddingRight: 4,
+            }}
+          >
+            {messages.length === 0 && (
+              <div style={{ textAlign: 'center', color: '#475569', fontSize: 12, padding: '20px 0' }}>
+                开始与 AI 对话以建立设备档案
+              </div>
+            )}
+            {messages.map((msg, i) => (
+              <div
+                key={i}
+                style={{ display: 'flex', justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start' }}
+              >
+                <div style={{
+                  background: msg.role === 'ai' ? 'rgba(59,130,246,.18)' : 'rgba(34,197,94,.18)',
+                  border: `1px solid ${msg.role === 'ai' ? 'rgba(59,130,246,.4)' : 'rgba(34,197,94,.4)'}`,
+                  borderRadius: 12, padding: '8px 12px', maxWidth: '80%',
+                  fontSize: 12, lineHeight: 1.5,
+                  color: msg.role === 'ai' ? '#93c5fd' : '#86efac',
+                  wordBreak: 'break-word',
+                }}>
+                  {msg.text}
+                </div>
+              </div>
+            ))}
+            {sending && (
+              <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
+                <div style={{
+                  background: 'rgba(59,130,246,.1)', border: '1px solid rgba(59,130,246,.3)',
+                  borderRadius: 12, padding: '8px 12px', fontSize: 12, color: '#60a5fa',
+                }}>
+                  思考中…
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* 输入区 */}
+          <div style={{ display: 'flex', gap: 6 }}>
+            <input
+              style={{ ...S.input, flex: 1 }}
+              placeholder="描述设备用途、场景…"
+              value={input}
+              onChange={e => setInput(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage() } }}
+              disabled={sending}
+            />
+            <button
+              style={{ ...S.btnPrimary, flexShrink: 0 }}
+              onClick={sendMessage}
+              disabled={sending || !input.trim()}
+            >
+              发送
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── 技能绑定区 ────────────────────────────────────────────────────────────────
+const SKILL_LAYERS = [
+  { key: 'motor',      label: 'Motor Skills',      color: '#f97316' },
+  { key: 'perception', label: 'Perception Skills',  color: '#22c55e' },
+  { key: 'cognitive',  label: 'Cognitive Skills',   color: '#3b82f6' },
+  { key: 'soft',       label: 'Soft Skills',        color: '#ec4899' },
+]
+
+const LAYER_LABELS_ZH = ['运动', '感知', '认知', '策略']
+
+function SkillsSection({ deviceId }) {
+  const [skills, setSkills]   = useState(null)
+  const [loading, setLoading] = useState(false)
+
+  useEffect(() => {
+    if (!deviceId) return
+    setLoading(true)
+    fetch(`/api/device/${deviceId}/skills`)
+      .then(r => r.json())
+      .then(data => setSkills(data))
+      .catch(() => setSkills(null))
+      .finally(() => setLoading(false))
+  }, [deviceId])
+
+  if (loading) {
+    return (
+      <div style={{ color: '#475569', fontSize: 12, textAlign: 'center', padding: '12px 0' }}>
+        加载技能…
+      </div>
+    )
+  }
+  if (!skills) {
+    return (
+      <div style={{ color: '#475569', fontSize: 12, textAlign: 'center', padding: '12px 0' }}>
+        暂无技能数据
+      </div>
+    )
+  }
+
+  const counts = SKILL_LAYERS.map(layer => (skills[layer.key] || []).length)
+  const total  = counts.reduce((a, b) => a + b, 0)
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      {SKILL_LAYERS.map((layer, idx) => {
+        const layerSkills = skills[layer.key] || []
+        return (
+          <div key={layer.key}>
+            <div style={{ fontSize: 11, color: '#64748b', marginBottom: 4 }}>{layer.label}</div>
+            <div style={{ display: 'flex', flexWrap: 'wrap' }}>
+              {layerSkills.length === 0 ? (
+                <span style={{ fontSize: 11, color: '#334155' }}>—</span>
+              ) : (
+                layerSkills.map((skill, si) => {
+                  const name   = typeof skill === 'string' ? skill : (skill.name || skill.skill || String(si))
+                  const active = typeof skill === 'string' ? true : (skill.suspended !== true && skill.active !== false)
+                  return (
+                    <span
+                      key={name}
+                      style={{
+                        padding: '4px 10px', borderRadius: 12,
+                        fontSize: 12, margin: 3,
+                        background:  active ? `${layer.color}22` : 'rgba(148,163,184,.08)',
+                        border: `1px solid ${active ? layer.color + '55' : 'rgba(148,163,184,.25)'}`,
+                        color: active ? layer.color : '#475569',
+                      }}
+                    >
+                      {name}
+                    </span>
+                  )
+                })
+              )}
+            </div>
+          </div>
+        )
+      })}
+      <div style={{
+        fontSize: 11, color: '#475569',
+        borderTop: '1px solid rgba(255,255,255,.06)', paddingTop: 8,
+      }}>
+        共 {total} 个技能（{counts.map((c, i) => `${c} ${LAYER_LABELS_ZH[i]}`).join(' + ')}）
+      </div>
+    </div>
+  )
+}
+
 // ── 传感器数据区 ──────────────────────────────────────────────────────────────
 function SensorSection({ state }) {
   if (!state || Object.keys(state).length === 0) {
@@ -301,7 +513,7 @@ function DeviceDetail({ device, deviceState, socket, showToast }) {
     .filter((item, idx, arr) => arr.findIndex(x => x.action === item.action) === idx)
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 10, height: '100%', overflow: 'hidden' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10, height: '100%', overflowY: 'auto', paddingRight: 2 }}>
 
       {/* 设备基本信息 */}
       <div style={{ ...S.card, flexShrink: 0 }}>
@@ -345,10 +557,19 @@ function DeviceDetail({ device, deviceState, socket, showToast }) {
         )}
       </div>
 
+      {/* AI 建档对话区 */}
+      <OnboardChat deviceId={device.device_id} />
+
       {/* 传感器数据 */}
-      <div style={{ ...S.card, flex: 1, overflowY: 'auto', minHeight: 0 }}>
+      <div style={{ ...S.card, flexShrink: 0 }}>
         <div style={S.sectionTitle}>实时传感器数据</div>
         <SensorSection state={deviceState} />
+      </div>
+
+      {/* 技能绑定区 */}
+      <div style={{ ...S.card, flexShrink: 0 }}>
+        <div style={S.sectionTitle}>技能绑定</div>
+        <SkillsSection deviceId={device.device_id} />
       </div>
 
       {/* 发送指令 */}
