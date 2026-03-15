@@ -414,7 +414,7 @@ class AgentLoop:
                 recent = [h["skill"] for h in self.action_history[-2:]]
                 if all(s == skill_name for s in recent):
                     logger.warning(f"[AgentLoop] 硬拦截: {skill_name} 连续3次, 强制跳过")
-                    from skills.hard_skills import SkillResult
+                    from skills.motor_skills import SkillResult
                     result = SkillResult(
                         success=False,
                         error_msg=f"系统拦截: {skill_name} 已连续使用3次且无位置变化, 你必须先移动 (fly_to/fly_relative) 再观察",

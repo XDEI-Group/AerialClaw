@@ -121,12 +121,15 @@ def _build_robot_registry(robot_id: str, robot_type: str):
         否则 → robot_type 必须在列表中
     """
     from skills.registry import SkillRegistry
-    from skills.hard_skills import (
+    from skills.motor_skills import (
         Takeoff, Land, FlyTo, Hover, GetPosition, GetBattery, ReturnToLaunch, ChangeAltitude,
         FlyRelative, LookAround, MarkLocation, GetMarks,
     )
     from skills.perception_skills import (
         DetectObject, RecognizeSpeech, FusePerception, ScanArea, GetSensorData, Observe,
+    )
+    from skills.cognitive_skills import (
+        RunPython, HttpRequest, ReadFile, WriteFile,
     )
 
     # 全量技能工厂（每次都 new 出新实例，避免共享状态）
@@ -136,6 +139,8 @@ def _build_robot_registry(robot_id: str, robot_type: str):
         LookAround, MarkLocation, GetMarks,
         # 软技能不再注册 Python 类，改为文档驱动 (skills/soft_docs/*.md)
         DetectObject, RecognizeSpeech, FusePerception, ScanArea, GetSensorData, Observe,
+        # 认知技能（信息层）
+        RunPython, HttpRequest, ReadFile, WriteFile,
     ]
 
     reg = SkillRegistry(auto_generate_doc=False)

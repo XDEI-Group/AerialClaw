@@ -12,7 +12,7 @@ soft_skills.py
 
 import time
 from skills.base_skill import Skill, SkillResult
-from skills.hard_skills import FlyTo, Hover, GetPosition
+from skills.motor_skills import FlyTo, Hover, GetPosition
 
 
 class SearchTarget(Skill):
