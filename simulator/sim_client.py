@@ -170,6 +170,9 @@ class SimulatorClient:
                 "takeoff", "land", "fly_to", "hover",
                 "arm", "disarm", "velocity_control",
             ],
+            "sensors": ["gps", "imu", "barometer", "camera_front", "camera_rear",
+                        "camera_left", "camera_right", "camera_down", "lidar_3d"],
+            "protocol": "websocket",
             "metadata": {
                 "simulator": True,
                 "world": self.world,
@@ -182,7 +185,7 @@ class SimulatorClient:
         for attempt in range(10):
             try:
                 resp = requests.post(url, json=payload, timeout=5)
-                if resp.status_code == 200:
+                if resp.status_code in (200, 201):
                     data = resp.json()
                     self.token = data.get("token", "")
                     logger.info("✅ 设备注册成功，token=%s...", self.token[:8])
