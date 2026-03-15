@@ -1937,6 +1937,35 @@ def api_memory_search():
 # 全局设备管理器（延迟初始化）
 _device_manager = None
 
+# 全局设备建档管理器（延迟初始化）
+_onboarding = None
+
+# 全局技能绑定器（延迟初始化）
+_skill_binder = None
+
+
+def _get_onboarding():
+    """获取或创建设备建档管理器单例"""
+    global _onboarding
+    if _onboarding is None:
+        from core.device_onboarding import DeviceOnboarding
+        try:
+            from llm_client import get_client
+            llm = get_client(module="planner")
+        except Exception:
+            llm = None
+        _onboarding = DeviceOnboarding(llm_client=llm)
+    return _onboarding
+
+
+def _get_skill_binder():
+    """获取或创建技能绑定器单例"""
+    global _skill_binder
+    if _skill_binder is None:
+        from core.skill_binder import SkillBinder
+        _skill_binder = SkillBinder()
+    return _skill_binder
+
 
 def _get_device_manager():
     """获取或创建设备管理器单例"""
@@ -1949,6 +1978,7 @@ def _get_device_manager():
         def on_offline(device_id):
             state.push_log("warning", f"⚠️ 设备离线: {device_id}")
             socketio.emit("device_offline", {"device_id": device_id})
+            _get_skill_binder().suspend(device_id)
 
         def on_online(device_id):
             state.push_log("info", f"✅ 设备上线: {device_id}")
@@ -1982,6 +2012,11 @@ def api_device_register():
             metadata=data.get("metadata", {}),
         )
         token = dm.register(info)
+        # 自动绑定技能
+        try:
+            _get_skill_binder().bind(info.device_id, info.capabilities, info.device_type)
+        except Exception as _e:
+            logger.warning("技能绑定失败 [%s]: %s", info.device_id, _e)
         state.push_log("success", f"✅ 设备注册: {info.device_id} ({info.device_type})")
         socketio.emit("device_registered", {"device_id": info.device_id, "device_type": info.device_type})
         return jsonify({"ok": True, "device_id": info.device_id, "token": token, "message": "设备注册成功"}), 201
@@ -2003,6 +2038,7 @@ def api_device_unregister(device_id):
         return jsonify({"ok": False, "error": "Token 无效", "code": "INVALID_TOKEN"}), 401
     try:
         dm.unregister(device_id)
+        _get_skill_binder().suspend(device_id)
         state.push_log("info", f"设备注销: {device_id}")
         socketio.emit("device_unregistered", {"device_id": device_id})
         return jsonify({"ok": True, "device_id": device_id, "message": "设备已注销"})
@@ -2050,6 +2086,46 @@ def api_device_list():
         "devices": [dm.to_dict(d) for d in devices],
         "count": len(devices),
     })
+
+
+@app.route("/api/device/<device_id>/onboard", methods=["POST"])
+def api_device_onboard(device_id):
+    """设备建档对话"""
+    data = request.get_json() or {}
+    message = data.get("message", "").strip()
+    if not message:
+        return jsonify({"ok": False, "error": "message 不能为空"}), 400
+    ob = _get_onboarding()
+    result = ob.chat(device_id, message)
+    return jsonify({"ok": True, **result})
+
+
+@app.route("/api/device/<device_id>/profile", methods=["GET"])
+def api_device_profile(device_id):
+    """获取设备档案"""
+    ob = _get_onboarding()
+    content = ob.get_profile(device_id)
+    if content:
+        return jsonify({"ok": True, "device_id": device_id, "content": content})
+    return jsonify({"ok": False, "error": "档案不存在"}), 404
+
+
+@app.route("/api/device/profiles", methods=["GET"])
+def api_device_profiles():
+    """列出所有设备档案"""
+    ob = _get_onboarding()
+    return jsonify({"ok": True, "profiles": ob.list_profiles()})
+
+
+@app.route("/api/device/<device_id>/skills", methods=["GET"])
+def api_device_skills(device_id):
+    """获取设备技能绑定"""
+    sb = _get_skill_binder()
+    binding = sb.get_binding(device_id)
+    if binding:
+        return jsonify({"ok": True, **binding.to_dict()})
+    return jsonify({"ok": True, "device_id": device_id, "status": "unbound",
+                    "motor": [], "perception": [], "cognitive": [], "soft": [], "total": 0})
 
 
 @app.route("/api/device/<device_id>/action", methods=["POST"])
