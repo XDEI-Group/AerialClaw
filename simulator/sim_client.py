@@ -211,8 +211,9 @@ class SimulatorClient:
                     logger.info("✅ 注册成功 token=%s...", self.token[:12])
                     return
                 elif r.status_code == 409:
-                    logger.info("设备已注册，尝试重新注册...")
-                    requests.delete(f"{self.server_url}/api/device/{self.device_id}", timeout=5)
+                    # 服务端现在会返回已有 token
+                    logger.warning("注册冲突 409，重试...")
+                    time.sleep(1)
                     continue
                 else:
                     logger.warning("注册失败 %d: %s", r.status_code, r.text[:100])

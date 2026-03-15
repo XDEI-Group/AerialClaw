@@ -1986,6 +1986,11 @@ def api_device_register():
         socketio.emit("device_registered", {"device_id": info.device_id, "device_type": info.device_type})
         return jsonify({"ok": True, "device_id": info.device_id, "token": token, "message": "设备注册成功"}), 201
     except ValueError as e:
+        # 设备已注册 — 返回已有 token（方便重连）
+        existing = dm.get_device(data.get("device_id", ""))
+        if existing:
+            return jsonify({"ok": True, "device_id": existing.info.device_id,
+                            "token": existing.token, "message": "设备已注册，返回已有 token"}), 200
         return jsonify({"ok": False, "error": str(e), "code": "DEVICE_ALREADY_EXISTS"}), 409
 
 
