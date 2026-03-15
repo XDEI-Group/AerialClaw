@@ -5,6 +5,7 @@
  * 布局：左侧设备列表 + 右侧设备详情/传感器/控制
  */
 import { useState, useEffect, useCallback, useRef } from 'react'
+import DeviceDashboard from './DeviceDashboard'
 
 const DEVICE_TYPES = ['UAV', 'UGV', 'ARM', 'SENSOR', 'CUSTOM']
 const PROTOCOLS    = ['http', 'mavlink', 'ros2', 'serial', 'custom']
@@ -560,10 +561,14 @@ function DeviceDetail({ device, deviceState, socket, showToast }) {
       {/* AI 建档对话区 */}
       {/* AI 建档在设备端 client.html 完成，控制台只展示结果 */}
 
-      {/* 传感器数据 */}
+      {/* 动态仪表板 — 根据设备能力自动生成 */}
       <div style={{ ...S.card, flexShrink: 0 }}>
-        <div style={S.sectionTitle}>实时传感器数据</div>
-        <SensorSection state={deviceState} />
+        <div style={S.sectionTitle}>设备仪表板</div>
+        <DeviceDashboard
+          capabilities={device.capabilities || []}
+          deviceState={deviceState}
+          sensorData={{}}
+        />
       </div>
 
       {/* 技能绑定区 */}
