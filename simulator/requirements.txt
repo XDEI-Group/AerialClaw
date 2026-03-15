@@ -1,0 +1,3 @@
+# mavsdk
+python-socketio[client]
+requests

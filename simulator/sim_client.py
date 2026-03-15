@@ -1,498 +1,299 @@
-#!/usr/bin/env python3
 """
-sim_client.py — AerialClaw 仿真设备端客户端
+sim_client.py — AerialClaw 仿真设备端（完全独立）
 
-独立运行在仿真环境中，通过通用设备协议连接控制端（server.py）。
+不依赖控制端任何代码。只用标准库 + mavsdk + socketio + requests。
+通过通用设备协议（HTTP + WebSocket）接入控制端。
 
-功能：
-  - 连接 PX4 SITL via MAVSDK
-  - 连接 Gazebo 传感器桥接（相机 + 激光雷达）
-  - 注册到控制端（HTTP POST /api/device/register）
-  - 通过 WebSocket 与控制端保持长连接
-  - 持续上报遥测状态（位置/电量/armed/in_air）→ device_state
-  - 持续上报传感器数据（相机帧 base64 / LiDAR）→ device_sensor
-  - 接收并执行控制指令（device_action）→ 回报 action_result
-
-用法：
-  # 先启动控制端
-  python server.py
-
-  # 另一个终端启动仿真端
-  cd simulator
-  python sim_client.py --server http://localhost:5001 --world urban_rescue
+用法:
+    python sim_client.py --server http://localhost:5001
+    python sim_client.py --server http://localhost:5001 --no-sim  # 不启动PX4,mock模式
 """
 
-import sys
-import os
-import time
-import base64
-import threading
-import logging
 import argparse
-
-# 将上级目录（项目根）加入 sys.path，以便 import adapters/ 和 sim/
-_SIM_DIR = os.path.dirname(os.path.abspath(__file__))
-_ROOT_DIR = os.path.dirname(_SIM_DIR)
-sys.path.insert(0, _ROOT_DIR)
+import asyncio
+import base64
+import json
+import logging
+import os
+import signal
+import subprocess
+import sys
+import threading
+import time
+from dataclasses import dataclass
 
 import requests
-import socketio as sio_module
+import socketio
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s — %(message)s",
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("sim_client")
 
+# ══════════════════════════════════════════════════════════════
+#  轻量 PX4 控制器（不依赖 adapters/px4_adapter.py）
+# ══════════════════════════════════════════════════════════════
+
+class PX4Controller:
+    """直接通过 MAVSDK-Python 控制 PX4，不依赖控制端代码。"""
+
+    def __init__(self, connection: str = "udp://:14540"):
+        self._conn = connection
+        self._system = None
+        self._connected = False
+
+    async def connect(self, timeout: float = 20) -> bool:
+        try:
+            from mavsdk import System
+            self._system = System()
+            await self._system.connect(system_address=self._conn)
+            logger.info("等待 PX4 连接...")
+            deadline = time.time() + timeout
+            async for state in self._system.core.connection_state():
+                if state.is_connected:
+                    self._connected = True
+                    logger.info("✅ PX4 已连接")
+                    return True
+                if time.time() > deadline:
+                    break
+            logger.warning("PX4 连接超时")
+            return False
+        except ImportError:
+            logger.warning("mavsdk 未安装，使用 mock 模式")
+            return False
+        except Exception as e:
+            logger.warning("PX4 连接失败: %s", e)
+            return False
+
+    async def execute(self, action: str, params: dict) -> dict:
+        """执行飞行指令，返回 {success, message}"""
+        if not self._connected or not self._system:
+            return {"success": False, "message": "PX4 未连接"}
+        try:
+            if action == "takeoff":
+                alt = params.get("altitude", 5.0)
+                await self._system.action.arm()
+                await self._system.action.set_takeoff_altitude(alt)
+                await self._system.action.takeoff()
+                return {"success": True, "message": f"起飞至 {alt}m"}
+            elif action == "land":
+                await self._system.action.land()
+                return {"success": True, "message": "降落中"}
+            elif action == "hover":
+                await self._system.action.hold()
+                return {"success": True, "message": "悬停"}
+            elif action == "return_to_launch":
+                await self._system.action.return_to_launch()
+                return {"success": True, "message": "返航"}
+            elif action == "fly_to":
+                n = params.get("north", 0)
+                e = params.get("east", 0)
+                d = params.get("down", -5)
+                await self._system.action.goto_location(n, e, abs(d), 0)
+                return {"success": True, "message": f"飞行至 N={n} E={e} D={d}"}
+            else:
+                return {"success": False, "message": f"未知指令: {action}"}
+        except Exception as e:
+            return {"success": False, "message": str(e)}
+
+    async def get_telemetry(self) -> dict:
+        """获取遥测数据"""
+        if not self._connected or not self._system:
+            return self._mock_telemetry()
+        try:
+            pos = await self._system.telemetry.position().__anext__()
+            bat = await self._system.telemetry.battery().__anext__()
+            in_air = await self._system.telemetry.in_air().__anext__()
+            armed = await self._system.telemetry.armed().__anext__()
+            return {
+                "battery": round(bat.remaining_percent * 100, 1),
+                "latitude": pos.latitude_deg,
+                "longitude": pos.longitude_deg,
+                "altitude": pos.relative_altitude_m,
+                "in_air": in_air,
+                "armed": armed,
+                "status": "airborne" if in_air else "idle",
+            }
+        except Exception:
+            return self._mock_telemetry()
+
+    def _mock_telemetry(self) -> dict:
+        """Mock 遥测数据"""
+        return {
+            "battery": 85.0,
+            "latitude": 34.2517,
+            "longitude": 108.9460,
+            "altitude": 0.0,
+            "in_air": False,
+            "armed": False,
+            "status": "idle (mock)",
+        }
+
+
+# ══════════════════════════════════════════════════════════════
+#  仿真客户端
+# ══════════════════════════════════════════════════════════════
 
 class SimulatorClient:
-    """仿真设备端客户端。
+    """仿真设备客户端 — 完全独立，通过通用协议接入控制端。"""
 
-    通过通用设备协议将 PX4 SITL + Gazebo 仿真环境
-    注册到控制端，使控制端无需感知对端是仿真还是真机。
-    """
-
-    def __init__(
-        self,
-        server_url: str = "http://localhost:5001",
-        device_id: str = "SIM_UAV_1",
-        world: str = "urban_rescue",
-        model: str = "x500_lidar_2d_cam_0",
-        telemetry_hz: float = 2.0,
-        sensor_hz: float = 5.0,
-        heartbeat_interval: float = 5.0,
-    ):
+    def __init__(self, server_url: str, device_id: str = "SIM_UAV_1",
+                 world: str = "default", no_sim: bool = False):
         self.server_url = server_url.rstrip("/")
         self.device_id = device_id
         self.world = world
-        self.model = model
-        self.telemetry_interval = 1.0 / telemetry_hz
-        self.sensor_interval = 1.0 / sensor_hz
-        self.heartbeat_interval = heartbeat_interval
-        self.token: str = ""
+        self.no_sim = no_sim
+        self.token = ""
+        self.sio = socketio.Client(reconnection=True, reconnection_delay=3)
+        self.px4 = PX4Controller()
         self._running = False
-
-        # Socket.IO 客户端（自动重连）
-        self.sio = sio_module.Client(
-            reconnection=True,
-            reconnection_attempts=0,  # 无限重连
-            reconnection_delay=3,
-        )
-
-        # PX4 适配器 + 传感器桥接（延迟初始化）
-        self._adapter = None
-        self._bridge = None
-
-        self._register_sio_handlers()
-
-    # ──────────────────────────────────────────────────────────────────────────
-    #  启动流程
-    # ──────────────────────────────────────────────────────────────────────────
+        self._loop = None
 
     def start(self):
-        """完整启动：PX4 → 传感器 → 注册 → WebSocket → 遥测/传感器流。"""
-        logger.info("=== AerialClaw 仿真设备端启动 ===")
-        logger.info("  device_id : %s", self.device_id)
-        logger.info("  server    : %s", self.server_url)
-        logger.info("  world     : %s", self.world)
-        self._running = True
+        """启动仿真客户端"""
+        logger.info("=== AerialClaw 仿真设备端 ===")
+        logger.info("device_id: %s | server: %s | world: %s", self.device_id, self.server_url, self.world)
 
-        self._connect_px4()
-        self._start_sensors()
+        # 1. 连接 PX4
+        if not self.no_sim:
+            self._loop = asyncio.new_event_loop()
+            connected = self._loop.run_until_complete(self.px4.connect())
+            if not connected:
+                logger.warning("PX4 未连接，以 mock 模式运行（遥测为模拟数据）")
+
+        # 2. 注册到控制端
         self._register()
-        self._connect_ws()
 
-        # 后台线程：遥测 + 传感器上报
-        threading.Thread(target=self._telemetry_loop, daemon=True, name="telemetry").start()
-        threading.Thread(target=self._sensor_loop, daemon=True, name="sensor").start()
+        # 3. WebSocket 连接
+        self._setup_ws()
+        try:
+            self.sio.connect(self.server_url, transports=["polling", "websocket"])
+        except Exception as e:
+            logger.error("WebSocket 连接失败: %s", e)
+            return
 
-        logger.info("仿真客户端就绪，按 Ctrl+C 退出")
+        # 4. 认证
+        self.sio.emit("device_connect", {"device_id": self.device_id, "token": self.token})
+
+        # 5. 启动上报线程
+        self._running = True
+        threading.Thread(target=self._telemetry_loop, daemon=True).start()
+        threading.Thread(target=self._heartbeat_loop, daemon=True).start()
+
+        logger.info("✅ 仿真客户端就绪，按 Ctrl+C 退出")
+
+        # 主循环
         try:
             while self._running:
                 time.sleep(1)
         except KeyboardInterrupt:
-            logger.info("收到 Ctrl+C，退出...")
-        finally:
+            logger.info("正在退出...")
             self._running = False
-            if self.sio.connected:
-                self.sio.disconnect()
-
-    # ──────────────────────────────────────────────────────────────────────────
-    #  PX4 连接
-    # ──────────────────────────────────────────────────────────────────────────
-
-    def _connect_px4(self):
-        """初始化 PX4Adapter 并连接 MAVSDK。"""
-        try:
-            from adapters.px4_adapter import PX4Adapter
-            logger.info("正在连接 PX4 SITL (MAVSDK)...")
-            self._adapter = PX4Adapter()
-            ok = self._adapter.connect(timeout=20)
-            if ok:
-                logger.info("✅ PX4 适配器连接成功")
-            else:
-                logger.warning("⚠️  PX4 适配器连接超时，以 mock 模式运行")
-                self._adapter = None
-        except Exception as e:
-            logger.warning("PX4 适配器不可用: %s，以 mock 模式运行", e)
-            self._adapter = None
-
-    # ──────────────────────────────────────────────────────────────────────────
-    #  Gazebo 传感器桥接
-    # ──────────────────────────────────────────────────────────────────────────
-
-    def _start_sensors(self):
-        """初始化 GzSensorBridge 并订阅传感器 topic。"""
-        try:
-            from sim.gz_sensor_bridge import GzSensorBridge
-            logger.info("正在连接 Gazebo 传感器 (world=%s, model=%s)...", self.world, self.model)
-            bridge = GzSensorBridge(model_name=self.model, world_name=self.world)
-            if bridge.start():
-                self._bridge = bridge
-                logger.info("✅ 传感器桥接启动成功")
-            else:
-                logger.warning("⚠️  传感器桥接启动失败（Gazebo 可能未运行）")
-        except Exception as e:
-            logger.warning("传感器桥接不可用: %s", e)
-            self._bridge = None
-
-    # ──────────────────────────────────────────────────────────────────────────
-    #  设备注册
-    # ──────────────────────────────────────────────────────────────────────────
+            self.sio.disconnect()
 
     def _register(self):
-        """HTTP POST /api/device/register 向控制端注册本设备。"""
+        """注册设备"""
         payload = {
             "device_id": self.device_id,
             "device_type": "UAV",
-            "capabilities": [
-                "fly", "camera", "lidar",
-                "takeoff", "land", "fly_to", "hover",
-                "arm", "disarm", "velocity_control",
-            ],
-            "sensors": ["gps", "imu", "barometer", "camera_front", "camera_rear",
-                        "camera_left", "camera_right", "camera_down", "lidar_3d"],
+            "capabilities": ["fly", "camera", "lidar", "takeoff", "land",
+                             "fly_to", "hover", "return_to_launch"],
+            "sensors": ["gps", "imu", "barometer", "camera_front",
+                        "camera_rear", "camera_left", "camera_right",
+                        "camera_down", "lidar_3d"],
             "protocol": "websocket",
-            "metadata": {
-                "simulator": True,
-                "world": self.world,
-                "model": self.model,
-                "px4_connected": self._adapter is not None,
-                "sensor_bridge": self._bridge is not None,
-            },
+            "metadata": {"simulator": True, "world": self.world},
         }
         url = f"{self.server_url}/api/device/register"
-        for attempt in range(10):
+        for i in range(10):
             try:
-                resp = requests.post(url, json=payload, timeout=5)
-                if resp.status_code in (200, 201):
-                    data = resp.json()
-                    self.token = data.get("token", "")
-                    logger.info("✅ 设备注册成功，token=%s...", self.token[:8])
+                r = requests.post(url, json=payload, timeout=5)
+                if r.status_code in (200, 201):
+                    self.token = r.json().get("token", "")
+                    logger.info("✅ 注册成功 token=%s...", self.token[:12])
                     return
+                elif r.status_code == 409:
+                    logger.info("设备已注册，尝试重新注册...")
+                    requests.delete(f"{self.server_url}/api/device/{self.device_id}", timeout=5)
+                    continue
                 else:
-                    logger.warning("注册失败 HTTP %d: %s", resp.status_code, resp.text[:200])
-            except requests.ConnectionError:
-                logger.warning(
-                    "无法连接控制端 %s，3秒后重试 (%d/10)...", url, attempt + 1
-                )
+                    logger.warning("注册失败 %d: %s", r.status_code, r.text[:100])
+            except Exception as e:
+                logger.warning("连接控制端失败: %s (重试 %d/10)", e, i+1)
             time.sleep(3)
-        logger.error("设备注册失败，已达最大重试次数，以无 token 模式继续运行")
+        logger.error("注册失败，无法继续")
 
-    # ──────────────────────────────────────────────────────────────────────────
-    #  WebSocket 连接
-    # ──────────────────────────────────────────────────────────────────────────
-
-    def _connect_ws(self):
-        """建立 Socket.IO 连接。"""
-        try:
-            self.sio.connect(self.server_url, wait_timeout=10)
-            logger.info("✅ WebSocket 连接成功")
-        except Exception as e:
-            logger.error("WebSocket 连接失败: %s", e)
-
-    def _register_sio_handlers(self):
-        """注册 Socket.IO 事件处理器。"""
-
-        @self.sio.event
-        def connect():
-            logger.info("WebSocket 已连接，发送 device_connect 认证...")
-            self.sio.emit("device_connect", {
-                "device_id": self.device_id,
-                "token": self.token,
-            })
-            # 重连后重新启动心跳（之前的守护线程会因 _running 检查自动退出）
-            threading.Thread(
-                target=self._heartbeat_loop, daemon=True, name="heartbeat"
-            ).start()
-
-        @self.sio.event
-        def disconnect():
-            logger.warning("WebSocket 断开连接")
+    def _setup_ws(self):
+        """设置 WebSocket 事件处理"""
+        @self.sio.on("device_connected")
+        def on_connected(data):
+            if data.get("ok"):
+                logger.info("✅ WebSocket 认证成功")
 
         @self.sio.on("device_action")
-        def on_device_action(data):
-            logger.info("收到指令: %s", data)
-            threading.Thread(
-                target=self._handle_action,
-                args=(data,),
-                daemon=True,
-                name="action",
-            ).start()
+        def on_action(data):
+            action = data.get("action", "")
+            params = data.get("params", {})
+            action_id = data.get("action_id", "")
+            logger.info("📩 收到指令: %s params=%s", action, params)
 
-    # ──────────────────────────────────────────────────────────────────────────
-    #  心跳
-    # ──────────────────────────────────────────────────────────────────────────
+            # 执行
+            if self._loop and not self.no_sim:
+                result = self._loop.run_until_complete(self.px4.execute(action, params))
+            else:
+                # Mock 执行
+                result = {"success": True, "message": f"[mock] {action} 已执行"}
 
-    def _heartbeat_loop(self):
-        while self._running and self.sio.connected:
-            self.sio.emit("device_heartbeat", {"device_id": self.device_id})
-            time.sleep(self.heartbeat_interval)
-
-    # ──────────────────────────────────────────────────────────────────────────
-    #  遥测上报
-    # ──────────────────────────────────────────────────────────────────────────
-
-    def _telemetry_loop(self):
-        """持续上报飞行状态 → device_state 事件。"""
-        while self._running:
-            try:
-                state_data = self._get_telemetry()
-                if self.sio.connected:
-                    self.sio.emit("device_state", {
-                        "device_id": self.device_id,
-                        **state_data,
-                    })
-            except Exception as e:
-                logger.debug("遥测上报异常: %s", e)
-            time.sleep(self.telemetry_interval)
-
-    def _get_telemetry(self) -> dict:
-        """从 PX4 适配器读取遥测，无适配器时返回 mock 数据。"""
-        if self._adapter and self._adapter.is_connected():
-            try:
-                st = self._adapter.get_state()
-                pos = st.position_ned
-                battery = st.battery_percent
-                # 电量归一化到 0-100
-                if battery > 100:
-                    battery = battery / 100.0
-                elif battery <= 1.0:
-                    battery = battery * 100.0
-                battery = round(max(0.0, min(100.0, battery)), 1)
-                return {
-                    "position": {
-                        "north": round(pos.north, 2) if pos else 0.0,
-                        "east":  round(pos.east,  2) if pos else 0.0,
-                        "down":  round(pos.down,  2) if pos else 0.0,
-                    },
-                    "altitude": round(-pos.down, 2) if pos else 0.0,
-                    "battery": battery,
-                    "armed":  st.is_armed,
-                    "in_air": st.in_air,
-                    "status": "airborne" if st.in_air else "idle",
-                }
-            except Exception as e:
-                logger.debug("读取遥测失败: %s", e)
-        # mock 数据
-        return {
-            "position": {"north": 0.0, "east": 0.0, "down": 0.0},
-            "altitude": 0.0,
-            "battery": 92.0,
-            "armed": False,
-            "in_air": False,
-            "status": "idle",
-        }
-
-    # ──────────────────────────────────────────────────────────────────────────
-    #  传感器上报
-    # ──────────────────────────────────────────────────────────────────────────
-
-    def _sensor_loop(self):
-        """持续上报相机帧 base64 + LiDAR 数据 → device_sensor 事件。"""
-        while self._running:
-            try:
-                if self._bridge and self._bridge.is_running and self.sio.connected:
-                    payload = self._collect_sensor_data()
-                    if payload:
-                        self.sio.emit("device_sensor", {
-                            "device_id": self.device_id,
-                            **payload,
-                        })
-            except Exception as e:
-                logger.debug("传感器上报异常: %s", e)
-            time.sleep(self.sensor_interval)
-
-    def _collect_sensor_data(self) -> dict:
-        """收集相机帧（base64 JPEG）和激光雷达数据。"""
-        import math
-        payload = {}
-
-        # ── 相机 ──
-        try:
-            import cv2
-            cameras = {}
-            for direction in ["front", "rear", "left", "right", "down"]:
-                img = self._bridge.get_camera_image(direction)
-                if img is not None:
-                    _, buf = cv2.imencode(".jpg", img, [cv2.IMWRITE_JPEG_QUALITY, 50])
-                    info = self._bridge.get_camera_info(direction)
-                    cameras[direction] = {
-                        "image": base64.b64encode(buf.tobytes()).decode("ascii"),
-                        "width":  info["width"],
-                        "height": info["height"],
-                        "fps":    round(info["fps"], 1),
-                    }
-            if cameras:
-                payload["cameras"] = cameras
-        except Exception as e:
-            logger.debug("相机采集失败: %s", e)
-
-        # ── 激光雷达 ──
-        try:
-            scan = self._bridge.get_lidar_scan()
-            if scan is not None:
-                rmax = scan["range_max"]
-                rmin = scan["range_min"]
-                ranges = scan["ranges"]
-                step = max(1, len(ranges) // 360)
-                clean = [
-                    round(r, 2) if (math.isfinite(r) and r >= rmin) else rmax
-                    for r in ranges[::step]
-                ]
-                payload["lidar"] = {
-                    "ranges":           clean,
-                    "angle_min":        scan["angle_min"],
-                    "angle_max":        scan["angle_max"],
-                    "angle_increment":  scan["angle_increment"] * step,
-                    "range_min":        rmin,
-                    "range_max":        rmax,
-                    "count":            len(clean),
-                }
-        except Exception as e:
-            logger.debug("激光雷达采集失败: %s", e)
-
-        return payload
-
-    # ──────────────────────────────────────────────────────────────────────────
-    #  指令处理
-    # ──────────────────────────────────────────────────────────────────────────
-
-    def _handle_action(self, data: dict):
-        """收到 device_action → 调用 PX4 适配器执行 → 回报 action_result。"""
-        action    = data.get("action", "")
-        params    = data.get("params", {})
-        action_id = data.get("action_id", "")
-
-        logger.info("执行指令: %s params=%s", action, params)
-        result = {"ok": False, "message": "适配器未连接", "action_id": action_id}
-
-        if not self._adapter or not self._adapter.is_connected():
-            result["message"] = "PX4 适配器未连接"
-        else:
-            try:
-                ar = self._dispatch_action(action, params)
-                result = {
-                    "ok":        ar.success,
-                    "message":   ar.message,
-                    "action_id": action_id,
-                    "action":    action,
-                }
-            except Exception as e:
-                result = {
-                    "ok":        False,
-                    "message":   str(e),
-                    "action_id": action_id,
-                    "action":    action,
-                }
-
-        logger.info("指令结果: %s", result)
-        if self.sio.connected:
+            logger.info("指令结果: %s", result)
             self.sio.emit("action_result", {
+                "action_id": action_id,
                 "device_id": self.device_id,
-                **result,
+                "success": result["success"],
+                "message": result["message"],
+                "output": result.get("output", {}),
             })
 
-    def _dispatch_action(self, action: str, params: dict):
-        """将 action 字符串分派到 PX4 适配器对应方法。"""
-        a = self._adapter
-        dispatch = {
-            "takeoff":          lambda: a.takeoff(params.get("altitude", 5.0)),
-            "land":             lambda: a.land(),
-            "hover":            lambda: a.hover(),
-            "arm":              lambda: a.arm(),
-            "disarm":           lambda: a.disarm(),
-            "fly_to":           lambda: a.fly_to(
-                params["north"], params["east"],
-                params.get("altitude", 5.0),
-                params.get("yaw", 0.0),
-            ),
-            "go_north":         lambda: a.fly_to(
-                params.get("distance", 5.0), 0, params.get("altitude", 5.0)
-            ),
-            "go_south":         lambda: a.fly_to(
-                -params.get("distance", 5.0), 0, params.get("altitude", 5.0)
-            ),
-            "go_east":          lambda: a.fly_to(
-                0, params.get("distance", 5.0), params.get("altitude", 5.0)
-            ),
-            "go_west":          lambda: a.fly_to(
-                0, -params.get("distance", 5.0), params.get("altitude", 5.0)
-            ),
-            "velocity_control": lambda: a.set_velocity_body(
-                params.get("forward", 0), params.get("right", 0),
-                params.get("down", 0), params.get("yaw_rate", 0),
-            ),
-        }
-        fn = dispatch.get(action)
-        if fn is None:
-            from adapters.sim_adapter import ActionResult
-            return ActionResult(success=False, message=f"未知指令: {action}")
-        return fn()
+    def _telemetry_loop(self):
+        """遥测上报循环 (1Hz)"""
+        while self._running:
+            try:
+                if self._loop and not self.no_sim:
+                    telem = self._loop.run_until_complete(self.px4.get_telemetry())
+                else:
+                    telem = self.px4._mock_telemetry()
+                self.sio.emit("device_state", {
+                    "device_id": self.device_id,
+                    **telem,
+                })
+            except Exception as e:
+                logger.debug("遥测上报异常: %s", e)
+            time.sleep(1)
+
+    def _heartbeat_loop(self):
+        """心跳循环 (5s)"""
+        while self._running:
+            try:
+                self.sio.emit("heartbeat", {"device_id": self.device_id})
+            except Exception:
+                pass
+            time.sleep(5)
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-#  入口
-# ══════════════════════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════
+#  启动
+# ══════════════════════════════════════════════════════════════
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="AerialClaw 仿真设备端客户端",
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
-    )
-    parser.add_argument(
-        "--server", default="http://localhost:5001",
-        help="控制端地址"
-    )
-    parser.add_argument(
-        "--device-id", default="SIM_UAV_1",
-        help="设备唯一 ID"
-    )
-    parser.add_argument(
-        "--world", default="urban_rescue",
-        help="Gazebo world 名称"
-    )
-    parser.add_argument(
-        "--model", default="x500_lidar_2d_cam_0",
-        help="Gazebo 模型名称（不含编号后缀则自动加 _0）"
-    )
-    parser.add_argument(
-        "--telemetry-hz", type=float, default=2.0,
-        help="遥测上报频率 (Hz)"
-    )
-    parser.add_argument(
-        "--sensor-hz", type=float, default=5.0,
-        help="传感器上报频率 (Hz)"
-    )
+    parser = argparse.ArgumentParser(description="AerialClaw 仿真设备端")
+    parser.add_argument("--server", default="http://localhost:5001", help="控制端地址")
+    parser.add_argument("--device-id", default="SIM_UAV_1", help="设备 ID")
+    parser.add_argument("--world", default="urban_rescue", help="Gazebo 场景")
+    parser.add_argument("--no-sim", action="store_true", help="不连接 PX4，纯 mock 模式")
     args = parser.parse_args()
 
     client = SimulatorClient(
         server_url=args.server,
         device_id=args.device_id,
         world=args.world,
-        model=args.model,
-        telemetry_hz=args.telemetry_hz,
-        sensor_hz=args.sensor_hz,
+        no_sim=args.no_sim,
     )
     client.start()
 
