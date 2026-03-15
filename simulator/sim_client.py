@@ -146,16 +146,30 @@ class SimulatorClient:
         self.px4 = PX4Controller()
         self._running = False
         self._loop = None
+        self._loop_thread = None
+
+    def _run_async(self, coro):
+        """线程安全地运行异步协程"""
+        if self._loop is None:
+            return None
+        future = asyncio.run_coroutine_threadsafe(coro, self._loop)
+        try:
+            return future.result(timeout=20)
+        except Exception as e:
+            logger.error("异步调用失败: %s", e)
+            return None
 
     def start(self):
         """启动仿真客户端"""
         logger.info("=== AerialClaw 仿真设备端 ===")
         logger.info("device_id: %s | server: %s | world: %s", self.device_id, self.server_url, self.world)
 
-        # 1. 连接 PX4
+        # 1. 连接 PX4（在独立线程运行事件循环）
         if not self.no_sim:
             self._loop = asyncio.new_event_loop()
-            connected = self._loop.run_until_complete(self.px4.connect())
+            self._loop_thread = threading.Thread(target=self._loop.run_forever, daemon=True)
+            self._loop_thread.start()
+            connected = self._run_async(self.px4.connect())
             if not connected:
                 logger.warning("PX4 未连接，以 mock 模式运行（遥测为模拟数据）")
 
@@ -238,7 +252,9 @@ class SimulatorClient:
 
             # 执行
             if self._loop and not self.no_sim:
-                result = self._loop.run_until_complete(self.px4.execute(action, params))
+                result = self._run_async(self.px4.execute(action, params))
+                if result is None:
+                    result = {"success": False, "message": "异步执行失败"}
             else:
                 # Mock 执行
                 result = {"success": True, "message": f"[mock] {action} 已执行"}
@@ -257,7 +273,7 @@ class SimulatorClient:
         while self._running:
             try:
                 if self._loop and not self.no_sim:
-                    telem = self._loop.run_until_complete(self.px4.get_telemetry())
+                    telem = self._run_async(self.px4.get_telemetry()) or self.px4._mock_telemetry()
                 else:
                     telem = self.px4._mock_telemetry()
                 self.sio.emit("device_state", {
