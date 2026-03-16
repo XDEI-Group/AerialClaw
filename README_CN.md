@@ -43,6 +43,7 @@
 
 ## 📢 更新日志
 
+- **(2026/3/16)** AerialClaw v2.0 同步至 GitHub — 安全包线、四层记忆、通用设备协议、自进化引擎、混合部署、AirSim 适配器、设备生命周期系统。
 - **(2026/3/14)** AerialClaw v1.0 发布 — 完整 Agent 决策循环、12 项硬技能、反思引擎、Web 控制台、PX4+Gazebo 仿真集成。
 
 ## 研究背景与动机
@@ -271,81 +272,134 @@ http://localhost:5001
 
 ```
 AerialClaw/
-├── server.py                    # 服务入口
+├── server.py                    # 服务入口（REST + WebSocket）
 ├── config.py                    # 全局配置（从 .env 读取）
 ├── llm_client.py                # LLM 多 Provider 客户端
-├── .env.example                 # 环境变量模板
 ├── requirements.txt             # Python 依赖
 │
-├── brain/                       # 决策核心
+├── brain/                       # 认知决策层
 │   ├── agent_loop.py            #   自主决策循环
-│   ├── planner_agent.py         #   LLM 任务规划器
+│   ├── planner_agent.py         #   LLM 任务规划器（记忆感知）
 │   └── chat_mode.py             #   对话模式
+│
+├── core/                        # 核心系统（v2.0）
+│   ├── preflight.py             #   7 项启动自检
+│   ├── doctor.py                #   健康评分系统（0-100）
+│   ├── doctor_checks/           #   连接 / 传感器 / AI / 配置检查
+│   ├── errors.py                #   10 个异常类 + 修复提示
+│   ├── logger.py                #   彩色终端 + 7 天文件轮转
+│   ├── device_manager.py        #   通用设备注册中心
+│   ├── device_analyzer.py       #   LLM 设备能力推断
+│   ├── device_onboarding.py     #   对话式设备建档
+│   ├── code_generator.py        #   自动适配器代码生成
+│   ├── skill_binder.py          #   能力 → 技能匹配
+│   ├── skill_evolver.py         #   技能优化引擎
+│   ├── system_executor.py       #   沙箱代码执行
+│   ├── capability_gap.py        #   三层能力缺口检测
+│   ├── bootstrap.py             #   系统引导编排
+│   ├── nlu_engine.py            #   自然语言理解
+│   ├── hybrid_planner.py        #   端云混合规划
+│   ├── transport.py             #   多协议传输层
+│   ├── failsafe.py              #   故障安全状态机
+│   ├── body_sense/              #   实时硬件感知引擎
+│   └── safety/                  #   脊髓安全架构
+│       ├── command_filter.py    #     命令白名单过滤
+│       ├── sandbox.py           #     自动降级沙箱（Docker→subprocess→restricted）
+│       ├── approval.py          #     人工审批
+│       ├── flight_envelope.py   #     硬编码物理限制
+│       └── audit_log.py         #     不可篡改审计日志
 │
 ├── perception/                  # 感知系统
 │   ├── daemon.py                #   被动感知守护线程
-│   ├── vlm_analyzer.py          #   主动视觉分析（VLM）
+│   ├── vlm_analyzer.py          #   主动视觉分析（云端 VLM）
 │   ├── prompts.py               #   感知提示词
 │   └── gz_camera.py             #   Gazebo 摄像头桥接
 │
-├── skills/                      # 技能库
-│   ├── hard_skills.py           #   硬技能实现
-│   ├── soft_skills.py           #   软技能执行器
-│   ├── docs/                    #   硬技能文档（13 个）
-│   ├── soft_docs/               #   软技能策略文档（3 个）
-│   └── dynamic_skill_gen.py     #   动态技能生成
+├── skills/                      # 四层技能架构
+│   ├── motor_skills.py          #   运动层：起飞、降落、飞行、悬停
+│   ├── perception_skills.py     #   感知层：检测、观察、扫描
+│   ├── cognitive_skills.py      #   认知层：HTTP 请求、Python 执行
+│   ├── soft_skills.py           #   策略层：文档驱动组合
+│   ├── soft_docs/               #   软技能策略文档（Markdown）
+│   ├── hard_skills.py           #   硬技能兼容接口
+│   ├── registry.py              #   技能注册中心（即插即用）
+│   ├── skill_loader.py          #   动态技能加载
+│   ├── dynamic_skill_gen.py     #   运行时技能生成
+│   └── docs/                    #   技能文档（13 项）
 │
-├── memory/                      # 记忆与学习
-│   ├── reflection_engine.py     #   反思引擎
-│   ├── skill_evolution.py       #   技能进化
-│   ├── world_model.py           #   世界模型
-│   └── task_log.py              #   任务日志
+├── memory/                      # 四层记忆系统
+│   ├── memory_manager.py        #   记忆编排器
+│   ├── episodic_memory.py       #   情节记忆（任务历史）
+│   ├── skill_memory.py          #   技能记忆（执行统计）
+│   ├── world_model.py           #   世界模型（环境状态）
+│   ├── vector_store.py          #   向量语义检索
+│   ├── shared_memory.py         #   跨设备共享记忆
+│   ├── reflection_engine.py     #   任务后反思（LLM）
+│   ├── skill_evolution.py       #   技能进化追踪
+│   └── task_log.py              #   结构化任务日志
+│
+├── adapters/                    # 硬件抽象层
+│   ├── base_adapter.py          #   抽象接口（所有设备）
+│   ├── protocol_adapter.py      #   通用设备协议（REST+WS）
+│   ├── adapter_manager.py       #   多设备适配器管理
+│   ├── adapter_factory.py       #   适配器自动创建
+│   ├── px4_adapter.py           #   PX4 SITL + MAVSDK
+│   ├── airsim_adapter.py        #   AirSim 远程连接
+│   ├── sim_adapter.py           #   仿真基础适配器
+│   └── mock_adapter.py          #   Mock 测试适配器
 │
 ├── robot_profile/               # 身份文档
 │   ├── SOUL.md / BODY.md        #   人格与硬件描述
 │   ├── MEMORY.md / SKILLS.md    #   经验与技能自述
-│   └── WORLD_MAP.md             #   环境地图
+│   ├── WORLD_MAP.md             #   环境地图
+│   └── body_generator.py        #   从在线设备自动生成 BODY.md
 │
-├── adapters/                    # 硬件适配层
-│   ├── base_adapter.py          #   抽象接口
-│   ├── px4_adapter.py           #   PX4 适配器
-│   ├── sim_adapter.py           #   仿真适配器
-│   └── mock_adapter.py          #   Mock 测试适配器
+├── device_profiles/             # 设备能力档案（每设备独立 Markdown）
+│
+├── clients/                     # 多平台客户端 SDK
+│   ├── python/                  #   Python 客户端库
+│   ├── arduino/                 #   Arduino/ESP32 客户端
+│   └── ros2/                    #   ROS2 桥接节点
 │
 ├── sim/                         # 仿真资源
-│   ├── models/x500_sensor/      #   自定义无人机模型（5 摄像头 + LiDAR）
-│   ├── worlds/urban_rescue.sdf  #   自定义 Gazebo 场景
+│   ├── models/                  #   自定义 Gazebo 模型
+│   ├── worlds/                  #   自定义 Gazebo 场景
 │   ├── airframes/               #   自定义 airframe
-│   └── px4_patches.diff         #   PX4 定制补丁
+│   └── sim_manager.py           #   仿真生命周期管理
+│
+├── simulator/                   # 独立仿真客户端
+│   ├── sim_client.py            #   解耦仿真设备客户端
+│   └── start_sim.sh             #   一键启动仿真
 │
 ├── ui/                          # Web 监控界面（React）
-│   └── src/components/          #   9 个 React 组件
-│
-├── scripts/                     # 脚本
-│   ├── setup_px4.sh             #   一键安装 PX4 + 打补丁
-│   └── start_gz_sim.sh          #   一键启动仿真
+│   └── src/components/          #   15 个 React 组件
 │
 ├── docs/                        # 开发文档
 │   ├── ARCHITECTURE.md          #   系统架构
-│   ├── SIMULATION_SETUP.md      #   仿真环境搭建
-│   ├── ADAPTER_GUIDE.md         #   适配器接入指南
-│   ├── SKILL_GUIDE.md           #   技能开发指南
-│   ├── PERCEPTION_GUIDE.md      #   感知模块接入指南
-│   └── LLM_CONFIG.md            #   LLM 配置说明
+│   ├── FAQ.md                   #   12 个已知问题 + 解决方案
+│   └── ...                      #   搭建、适配器、技能、感知指南
 │
 └── assets/                      # 图片与演示资源
 ```
 
 ## 研究进展与计划
 
-### 已实现
-- [x] 自主决策循环 · 身份与状态管理 · 12 项硬技能 + 3 项软技能
+### 已实现（v2.0）
+- [x] 自主决策循环 · 身份与状态管理 · 四层技能架构
 - [x] 被动 + 主动双层感知 · 经验积累与反思 · 动态技能生成
-- [x] PX4 + Gazebo 仿真集成 · Web 监控与交互界面
+- [x] PX4 + Gazebo 仿真集成 · Web 监控与交互界面（15 个组件）
+- [x] 脊髓安全架构 — 命令过滤 → 沙箱 → 审批 → 安全包线
+- [x] 四层记忆系统 — 工作 / 情节 / 技能 / 世界 + 向量检索
+- [x] 通用设备协议 — REST + WebSocket，任何设备可接入
+- [x] 自进化引擎 — 设备分析 → 代码生成 → 技能优化
+- [x] 设备生命周期 — 对话建档 → 能力画像 → 技能绑定
+- [x] 混合部署 — 端云协同规划，自动故障切换
+- [x] 多平台客户端 — Python SDK、Arduino/ESP32、ROS2 桥接
+- [x] AirSim 适配器 — 远程仿真连接支持
 
 ### 未来方向
-- [ ] 真实无人机移植 · ROS2 集成 · Sim2Real 迁移
-- [ ] 多智能体协作 · 通用设备框架解耦 · 安全决策边界
+- [ ] AirSim 远程仿真验证 · 真实无人机移植 · Sim2Real 迁移
+- [ ] 多智能体协作 · MCP 标准接口 · 跨设备共享学习
 
 ## 参与贡献
 
