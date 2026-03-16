@@ -10,10 +10,16 @@
 
 simulation:
   # 仿真后端类型: airsim | px4 | hybrid
-  #   - airsim: 仅使用 AirSim (仅感知)
-  #   - px4: 仅使用 PX4 SITL (控制 + 姿态)
+  #   - airsim: AirSim SimpleFlight (控制 + 感知, 不需要 PX4)
+  #   - px4: PX4 SITL + Gazebo (控制 + 姿态)
   #   - hybrid: AirSim + PX4 混合 (推荐)
   backend: px4
+  
+  # 适配器类型: px4 | airsim | mock
+  #   - px4: PX4 MAVSDK 适配器
+  #   - airsim: AirSim SimpleFlight 适配器 (远程/本地)
+  #   - mock: 模拟适配器 (测试用)
+  adapter: px4
   
   # 状态同步间隔 (秒)
   sync_interval: 0.1
@@ -32,6 +38,13 @@ simulation:
     
     # API 超时时间 (毫秒)
     timeout_ms: 30000
+    
+    # 无人机名称 (空字符串=默认无人机, 多机时指定如 "Drone1", "drone_1")
+    vehicle_name: ""
+    
+    # 远程 AirSim 服务器预设 (取消注释使用)
+    # ip: "10.204.233.85"    # SHAILAB T630 服务器
+    # vehicle_name: "drone_1"  # OpenFly 配置的无人机名
   
   # PX4 SITL 配置
   px4:

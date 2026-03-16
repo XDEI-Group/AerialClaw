@@ -41,10 +41,18 @@ def list_adapters() -> list:
 # ── 内置适配器注册 ────────────────────────────────────────────────────────────
 
 def _register_builtins():
-    from adapters.px4_adapter import PX4Adapter
     from adapters.mock_adapter import MockAdapter
-    register_adapter("px4", PX4Adapter)
     register_adapter("mock", MockAdapter)
+    try:
+        from adapters.px4_adapter import PX4Adapter
+        register_adapter("px4", PX4Adapter)
+    except ImportError:
+        pass  # mavsdk 未安装时跳过
+    try:
+        from adapters.airsim_adapter import AirSimAdapter
+        register_adapter("airsim", AirSimAdapter)
+    except ImportError:
+        pass  # airsim 包未安装时跳过
 
 _register_builtins()
 
