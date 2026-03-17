@@ -953,14 +953,18 @@ def api_sensor_lidar():
 
 # ── 前端静态文件服务 ──────────────────────────────────────────────────────────
 
-@app.route("/", defaults={"path": ""})
+@app.route("/")
 @app.route("/body")
 def serve_body_sense_page():
-    """BodySense 实时硬件感知页面（手机友好）"""
+    """首页 / BodySense 页面"""
+    # 优先返回前端 SPA
+    index = os.path.join(_UI_DIST, "index.html")
+    if os.path.exists(index):
+        return send_file(index)
     body_html = os.path.join(_BASE_DIR, "ui", "body.html")
     if os.path.exists(body_html):
         return send_file(body_html)
-    return "<h2>body.html 不存在</h2>", 404
+    return "<h2>前端未构建，请先运行 cd ui && npm run build</h2>", 200
 
 
 @app.route("/<path:path>")
