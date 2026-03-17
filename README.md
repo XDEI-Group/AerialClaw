@@ -93,21 +93,9 @@ All documents use Markdown format, supporting version management and manual revi
 
 The system uses a **four-layer skill architecture** inspired by human cognitive structure, where each layer handles a different level of abstraction:
 
-```
-┌─────────────────────────────────────────────────────┐
-│  Strategy Layer (Soft Skills)                        │  ← Knowledge documents, LLM-composed
-│  search_target, rescue_person, patrol_area           │
-├─────────────────────────────────────────────────────┤
-│  Cognitive Layer (Cognitive Skills)                   │  ← Information processing capabilities
-│  http_request, run_python, read_file, write_file     │
-├─────────────────────────────────────────────────────┤
-│  Perception Layer (Perception Skills)                │  ← Environmental awareness
-│  detect_object, observe, scan_area, fuse_perception  │
-├─────────────────────────────────────────────────────┤
-│  Motor Layer (Motor Skills)                          │  ← Physical actions
-│  takeoff, land, fly_to, hover, return_to_launch      │
-└─────────────────────────────────────────────────────┘
-```
+<p align="center">
+  <img src="assets/skill_architecture.png" alt="Four-Layer Skill Architecture" width="700" />
+</p>
 
 **Motor Skills (12 Atomic Actions)** — Physical control of the drone:
 
