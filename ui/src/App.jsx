@@ -197,6 +197,9 @@ export default function App() {
                   lastAiPlan={lastAiPlan}
                   logs={logs}
                   onOpenCockpit={openCockpit}
+                  socket={socket}
+                  worldState={worldState}
+                  onMapCommand={(cmd) => sendChat(cmd)}
                 />
               )}
             </div>

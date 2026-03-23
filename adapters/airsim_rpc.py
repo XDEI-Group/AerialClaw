@@ -119,10 +119,18 @@ class AirSimDirectClient:
         self._rpc.call("moveToPosition", x, y, z, velocity,
                        timeout_sec, 0, 0, 0, vehicle_name)
 
-    def sim_get_images(self, requests: list, vehicle_name: str = "") -> list:
+    def sim_get_images(self, requests: list, vehicle_name: str = "", external: bool = False) -> list:
         """
         requests: list of dicts with keys: camera_name, image_type, pixels_as_float, compress
+        AirSim RPC expects list of dicts (not lists), plus vehicle_name and external args.
         """
-        rpc_reqs = [[r["camera_name"], r["image_type"], r["pixels_as_float"], r["compress"]]
+        rpc_reqs = [{"camera_name": r["camera_name"], "image_type": r["image_type"],
+                     "pixels_as_float": r["pixels_as_float"], "compress": r["compress"]}
                     for r in requests]
-        return self._rpc.call("simGetImages", rpc_reqs, vehicle_name) or []
+        return self._rpc.call("simGetImages", rpc_reqs, vehicle_name, external) or []
+
+    def get_lidar_data(self, lidar_name: str = "LidarSensor1", vehicle_name: str = "") -> dict:
+        """Get LiDAR point cloud data from AirSim.
+        Returns dict with keys: point_cloud (flat list of x,y,z), timestamp, pose, etc.
+        """
+        return self._rpc.call("getLidarData", lidar_name, vehicle_name) or {}

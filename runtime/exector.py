@@ -106,6 +106,24 @@ class Executor:
 
         skill = registry.get_skill(skill_name)
         if skill is None:
+            # 检查是否是软技能（文档驱动的任务策略）
+            try:
+                from skills.soft_skill_manager import get_soft_skill_manager
+                mgr = get_soft_skill_manager()
+                if mgr.skill_exists(skill_name):
+                    doc = mgr.get_skill_doc(skill_name)
+                    logs.append(f"[Executor] 软技能 '{skill_name}' → 加载策略文档")
+                    return ExecutionResult(
+                        success=True,
+                        reward=0.5,
+                        skill=skill_name,
+                        robot=robot_id,
+                        output={"strategy_doc": doc[:800],
+                                "instruction": f"已加载 {skill_name} 策略文档。请仔细阅读并用硬技能逐步执行。"},
+                        logs=logs,
+                    )
+            except Exception:
+                pass
             return ExecutionResult(
                 success=False,
                 reward=0.0,
@@ -123,13 +141,36 @@ class Executor:
             if skill_name in ("land", "return_to_launch"):
                 logs.append(f"[Executor] 前提检查 WARNING (继续执行): {skill.preconditions}")
             else:
+                # 逐条检查，找出具体哪条不满足
+                failed = []
+                for cond in skill.preconditions:
+                    if "battery" in cond:
+                        threshold = int("".join(filter(str.isdigit, cond)))
+                        actual = robot_state.get("battery", 100)
+                        if actual <= threshold:
+                            failed.append(f"battery={actual}% (要求>{threshold}%)")
+                    elif "robot_type" in cond:
+                        expected = cond.split("==")[-1].strip()
+                        actual = robot_state.get("robot_type", "unknown")
+                        if actual != expected:
+                            failed.append(f"robot_type={actual!r} (要求{expected})")
+                    elif "in_air" in cond:
+                        expected = "True" in cond
+                        actual = robot_state.get("in_air", False)
+                        if bool(actual) != expected:
+                            state_str = "在空中" if actual else "在地面"
+                            need_str = "在空中" if expected else "在地面"
+                            failed.append(f"in_air={state_str} (要求{need_str})")
+                if not failed:
+                    failed = skill.preconditions  # fallback
+                fail_msg = "；".join(failed)
                 return ExecutionResult(
                     success=False,
                     reward=0.0,
                     skill=skill_name,
                     robot=robot_id,
-                    error_msg=f"前提条件不满足: {', '.join(skill.preconditions)}。请检查无人机状态。",
-                    logs=logs + [f"[Executor] 前提检查失败: {skill.preconditions}"],
+                    error_msg=f"前提条件不满足: {fail_msg}",
+                    logs=logs + [f"[Executor] 前提检查失败: {fail_msg}"],
                 )
 
         # ── 4. 更新机器人状态为 executing ───────────────────────────────────

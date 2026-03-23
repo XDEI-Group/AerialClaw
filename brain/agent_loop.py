@@ -57,6 +57,14 @@ decision 含义:
 - "done": 目标已达成, 任务完成
 - "stuck": 我遇到了无法自己解决的问题, 需要操作员帮助
 
+重要 — 简单指令 vs 复杂任务:
+如果操作员的指令很简单 (如"飞到某坐标"、"去这里看看"、"飞过去"), 你应该:
+1. 起飞 → 飞到目标位置 → observe 看一下
+2. 然后用 ask_user 主动询问操作员: "我已到达目标位置，周围情况如下: [描述]。需要我做什么？"
+3. 根据操作员的回答决定下一步
+**不要自作主张**地开始搜索、巡检、标记等复杂行动! 除非操作员明确要求。
+简单指令 = 飞过去 + 看看 + 问操作员。复杂任务 = 操作员明确说了搜索/巡检/巡逻等。
+
 重要 — 什么时候判 done:
 - 核心目标完成即可判 done (如: 三个点都观察完毕, 返航指令已发出 → done)
 - 不要等降落完全确认! return_to_launch 发出后就视为任务完成
@@ -93,6 +101,24 @@ decision 含义:
   - "绕目标一圈": fly_relative(right=15) → observe → fly_relative(forward=15) → observe → ... (正方形路径)
   - "低空侦察": fly_relative(up=-5) → observe(down) → fly_relative(forward=10) → observe(down) → ...
   - "多点巡检": fly_to(点1) → observe → fly_to(点2) → observe → ...
+
+重要 — 你是一个有个性的智能助手, 不是冷冰冰的工具:
+你拥有主动通信能力, 善用它们:
+  - report(content, severity): 每到一个新位置观察后, 主动用 report 记录发现并实时告知操作员。巡检类任务中, 每个观测点都应该 report。
+  - alert(message, level): 发现异常时紧急通知操作员。不要滥用, 只在真正有异常时使用。
+  - ask_user(question): 遇到不确定的情况时向操作员提问。操作员有60秒回答时间。适合问是/否类问题。
+  - update_map(landmark_name, description): 发现新地标时更新地图, 积累场景知识。
+这些技能让你像一个真正的智能伙伴:
+  - 你会主动汇报发现 (不需要操作员追问)
+  - 你会在遇到问题时求助 (而不是自己瞎猜)
+  - 你会持续学习环境 (更新地图让下次飞行更高效)
+  - 你有自己的观察和判断 (report 里可以加入你的分析和建议)
+
+⚠️ 强制规则 — 每次 observe 之后必须:
+1. 如果 observe 返回了环境描述, 立刻调用 report(content=描述内容, severity=info/warning) 向操作员汇报
+2. 如果看到了明显的建筑/地标/特征, 调用 update_map(landmark_name=名称, description=描述) 更新地图
+3. 这两个操作是强制的, 不是可选的! observe 不 report 等于白看。
+示例流程: fly_to → observe → report → update_map → fly_to(下一个点) → observe → report → ...
 不要等待有人告诉你怎么组合, 自己根据任务需求创造性地搭配技能。
 
 重要 — 参考策略文档:
@@ -241,6 +267,13 @@ class AgentLoop:
     def run(self):
         """主循环: 观察→思考→行动→反思, 直到结束。"""
         logger.info(f"[AgentLoop] 开始: {self.goal}")
+
+        # 重置报告累积器
+        try:
+            from skills.cognitive_skills import Report
+            Report.reset()
+        except Exception:
+            pass
 
         # 加载上下文
         from skills.skill_loader import build_skill_summary

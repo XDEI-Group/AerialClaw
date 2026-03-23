@@ -27,7 +27,8 @@ The project uses Markdown documents to define and maintain each agent's cognitiv
 
 ## 📢 Update
 
-- **(2026/3/16)** AerialClaw v2.0 synced to GitHub — safety envelope, four-layer memory, universal device protocol, self-evolution engine, hybrid deployment, AirSim adapter, device lifecycle system.
+- **(2026/3/24)** AerialClaw v2.0 updated — AirSim Shanghai city scene integration, autonomous city patrol demo, GPT-4o vision perception, real-time map update, Doctor agent adapter, WASD manual control, smooth interpolated flight.
+- **(2026/3/16)** AerialClaw v2.0 released — safety envelope, four-layer memory, universal device protocol, self-evolution engine, hybrid deployment, AirSim adapter, device lifecycle system.
 - **(2026/3/14)** AerialClaw v1.0 released — full agent loop, 12 hard skills, reflection engine, Web UI, PX4+Gazebo simulation.
 
 

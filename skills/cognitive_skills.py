@@ -18,6 +18,15 @@ from skills.base_skill import Skill, SkillResult
 
 logger = logging.getLogger(__name__)
 
+
+def _parse_pos(robot_state):
+    """从 robot_state 解析位置，兼容数组和字典格式。返回 (north, east, down)"""
+    pos = robot_state.get("position", [0, 0, 0])
+    if isinstance(pos, (list, tuple)):
+        return float(pos[0]) if len(pos) > 0 else 0.0, float(pos[1]) if len(pos) > 1 else 0.0, float(pos[2]) if len(pos) > 2 else 0.0
+    return float(pos.get("north", 0)), float(pos.get("east", 0)), float(pos.get("down", 0))
+
+
 # 工作目录基准（限制文件读写范围）
 _WORK_DIR = Path(os.environ.get("AERIALCLAW_WORKDIR", ".")).resolve()
 
@@ -305,3 +314,312 @@ class WriteFile(Skill):
             cost_time=elapsed,
             logs=[f"write_file: {path_str} ({size}B) 写入成功"],
         )
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  Report — 实时巡检报告
+# ══════════════════════════════════════════════════════════════════════════════
+
+class Report(Skill):
+    """边飞边写报告，实时推送到前端。也可以追加条目到累积报告中。"""
+
+    name = "report"
+    description = "记录一条巡检发现并实时推送给操作员。支持边飞边写报告，所有条目会累积成完整报告。"
+    skill_type = "cognitive"
+    robot_type = []
+
+    input_schema = {
+        "content": {"type": "str", "description": "报告内容，描述当前位置看到的情况"},
+        "severity": {"type": "str", "description": "严重程度: info/warning/danger，默认 info"},
+    }
+    output_schema = {
+        "report_id": {"type": "int", "description": "报告条目编号"},
+        "total_entries": {"type": "int", "description": "累计报告条目数"},
+    }
+    preconditions = []
+
+    # 类级别的报告累积器
+    _reports = []
+
+    def execute(self, robot_state: dict, **params) -> SkillResult:
+        start = time.time()
+        content = params.get("content", "")
+        severity = params.get("severity", "info")
+
+        if not content:
+            return SkillResult(success=False, error_msg="报告内容不能为空", cost_time=0)
+
+        # 获取当前位置
+        _n, _e, _d = _parse_pos(robot_state)
+        pos_str = f"({_n:.0f}, {_e:.0f}, h={abs(_d):.0f}m)"
+
+        entry = {
+            "id": len(Report._reports) + 1,
+            "time": time.strftime("%H:%M:%S"),
+            "position": pos_str,
+            "severity": severity,
+            "content": content,
+        }
+        Report._reports.append(entry)
+
+        # 通过 socketio 实时推送
+        icon = {"info": "📋", "warning": "⚠️", "danger": "🚨"}.get(severity, "📋")
+        msg = f"{icon} 巡检报告 #{entry['id']} [{entry['time']}] {pos_str}\n{content}"
+
+        try:
+            from server import socketio
+            socketio.emit("ai_chat_reply", {
+                "ok": True,
+                "reply": msg,
+                "intent": "patrol_report",
+            })
+            # 同时推送位置标注到地图
+            socketio.emit("map_report", {
+                "id": entry["id"],
+                "n": _n,
+                "e": _e,
+                "severity": severity,
+                "content": content[:60],
+            })
+        except Exception as e:
+            logger.warning(f"推送报告失败: {e}")
+
+        elapsed = time.time() - start
+        return SkillResult(
+            success=True,
+            output={"report_id": entry["id"], "total_entries": len(Report._reports)},
+            cost_time=elapsed,
+            logs=[f"report #{entry['id']}: {severity} - {content[:50]}"],
+        )
+
+    @classmethod
+    def get_full_report(cls) -> str:
+        """获取完整累积报告（供任务完成时汇总）。"""
+        if not cls._reports:
+            return "（无巡检记录）"
+        lines = ["# 巡检报告\n"]
+        for r in cls._reports:
+            icon = {"info": "📋", "warning": "⚠️", "danger": "🚨"}.get(r["severity"], "📋")
+            lines.append(f"{icon} **#{r['id']}** [{r['time']}] {r['position']}")
+            lines.append(f"   {r['content']}\n")
+        return "\n".join(lines)
+
+    @classmethod
+    def reset(cls):
+        """重置报告累积器（新任务开始时调用）。"""
+        cls._reports = []
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  Alert — 异常上报
+# ══════════════════════════════════════════════════════════════════════════════
+
+class Alert(Skill):
+    """发现异常情况时，立刻通知操作员。"""
+
+    name = "alert"
+    description = "发现异常情况时紧急通知操作员。会以醒目方式推送警报，操作员可以决定是否中止任务。"
+    skill_type = "cognitive"
+    robot_type = []
+
+    input_schema = {
+        "message": {"type": "str", "description": "警报内容，描述发现的异常"},
+        "level": {"type": "str", "description": "警报等级: warning/danger/critical，默认 warning"},
+    }
+    output_schema = {
+        "alert_id": {"type": "int", "description": "警报编号"},
+        "acknowledged": {"type": "bool", "description": "是否已送达"},
+    }
+    preconditions = []
+
+    _alert_count = 0
+
+    def execute(self, robot_state: dict, **params) -> SkillResult:
+        start = time.time()
+        message = params.get("message", "")
+        level = params.get("level", "warning")
+
+        if not message:
+            return SkillResult(success=False, error_msg="警报内容不能为空", cost_time=0)
+
+        Alert._alert_count += 1
+        alert_id = Alert._alert_count
+
+        _n, _e, _d = _parse_pos(robot_state)
+        pos_str = f"({_n:.0f}, {_e:.0f}, h={abs(_d):.0f}m)"
+
+        icon = {"warning": "⚠️", "danger": "🚨", "critical": "🆘"}.get(level, "⚠️")
+        msg = f"{icon} **警报 #{alert_id}** [{level.upper()}]\n📍 位置: {pos_str}\n{message}"
+
+        try:
+            from server import socketio
+            socketio.emit("ai_chat_reply", {
+                "ok": True,
+                "reply": msg,
+                "intent": "alert",
+                "level": level,
+            })
+            socketio.emit("alert", {"id": alert_id, "level": level, "message": message, "position": pos_str})
+        except Exception as e:
+            logger.warning(f"推送警报失败: {e}")
+
+        elapsed = time.time() - start
+        return SkillResult(
+            success=True,
+            output={"alert_id": alert_id, "acknowledged": True},
+            cost_time=elapsed,
+            logs=[f"alert #{alert_id}: {level} - {message[:50]}"],
+        )
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  AskUser — 主动提问
+# ══════════════════════════════════════════════════════════════════════════════
+
+class AskUser(Skill):
+    """遇到不确定的情况时，主动向操作员提问并等待回答。"""
+
+    name = "ask_user"
+    description = "向操作员提问并等待回答。用于遇到不确定情况需要人类判断时。操作员有60秒回答时间。"
+    skill_type = "cognitive"
+    robot_type = []
+
+    input_schema = {
+        "question": {"type": "str", "description": "要问操作员的问题"},
+    }
+    output_schema = {
+        "answer": {"type": "str", "description": "操作员的回答，超时则为'(操作员未回答)'"},
+    }
+    preconditions = []
+
+    # 用于接收用户回答的队列
+    _pending_answer = None
+    _answer_event = None
+
+    def execute(self, robot_state: dict, **params) -> SkillResult:
+        import threading
+        start = time.time()
+        question = params.get("question", "")
+
+        if not question:
+            return SkillResult(success=False, error_msg="问题不能为空", cost_time=0)
+
+        _n, _e, _d = _parse_pos(robot_state)
+        pos_str = f"({_n:.0f}, {_e:.0f})"
+
+        # 设置等待事件
+        AskUser._pending_answer = None
+        AskUser._answer_event = threading.Event()
+
+        msg = f"🙋 **无人机提问** 📍{pos_str}\n{question}\n\n💬 请在聊天框回复，60秒内有效"
+
+        try:
+            from server import socketio
+            socketio.emit("ai_chat_reply", {
+                "ok": True,
+                "reply": msg,
+                "intent": "ask_user",
+                "awaiting_answer": True,
+            })
+        except Exception as e:
+            logger.warning(f"推送提问失败: {e}")
+
+        # 等待回答（最多60秒）
+        answered = AskUser._answer_event.wait(timeout=60)
+
+        if answered and AskUser._pending_answer:
+            answer = AskUser._pending_answer
+        else:
+            answer = "(操作员未回答，自行判断)"
+
+        AskUser._pending_answer = None
+        AskUser._answer_event = None
+
+        elapsed = time.time() - start
+        return SkillResult(
+            success=True,
+            output={"answer": answer},
+            cost_time=elapsed,
+            logs=[f"ask_user: Q='{question[:40]}' A='{answer[:40]}'"],
+        )
+
+    @classmethod
+    def receive_answer(cls, answer: str):
+        """接收操作员的回答（由 server 调用）。"""
+        cls._pending_answer = answer
+        if cls._answer_event:
+            cls._answer_event.set()
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  UpdateMap — 自动更新地图
+# ══════════════════════════════════════════════════════════════════════════════
+
+class UpdateMap(Skill):
+    """将新发现的地标/建筑信息追加到 WORLD_MAP.md，持续积累场景知识。"""
+
+    name = "update_map"
+    description = "将新发现的地标或建筑信息追加到场景地图(WORLD_MAP.md)。用于探索新区域后记录发现。"
+    skill_type = "cognitive"
+    robot_type = []
+
+    input_schema = {
+        "landmark_name": {"type": "str", "description": "地标名称 (如 '高层办公楼群')"},
+        "description": {"type": "str", "description": "外观描述"},
+    }
+    output_schema = {
+        "updated": {"type": "bool", "description": "是否更新成功"},
+        "total_landmarks": {"type": "int", "description": "地图中总地标数"},
+    }
+    preconditions = []
+
+    def execute(self, robot_state: dict, **params) -> SkillResult:
+        start = time.time()
+        name = params.get("landmark_name", "")
+        desc = params.get("description", "")
+
+        if not name:
+            return SkillResult(success=False, error_msg="地标名称不能为空", cost_time=0)
+
+        n, e, _d = _parse_pos(robot_state)
+
+        map_path = Path(__file__).parent.parent / "robot_profile" / "WORLD_MAP.md"
+
+        try:
+            content = map_path.read_text(encoding="utf-8") if map_path.exists() else "# WORLD_MAP.md\n"
+
+            # 追加到 "## 探索发现" 段落
+            marker = "## 探索发现"
+            entry = f"| {name} | ({n:.0f}, {e:.0f}) | {desc} |"
+
+            if marker not in content:
+                content += f"\n\n{marker}\n\n| 地标 | NED坐标 | 描述 |\n|------|---------|------|\n{entry}\n"
+            else:
+                content = content.rstrip() + f"\n{entry}\n"
+
+            map_path.write_text(content, encoding="utf-8")
+
+            # 数地标数
+            total = content.count("| (")
+
+            # 实时推送新地标到前端
+            try:
+                from server import socketio
+                socketio.emit("map_landmark", {
+                    "name": name,
+                    "n": round(n, 1),
+                    "e": round(e, 1),
+                    "desc": desc,
+                })
+            except Exception as _e:
+                logger.warning(f"推送地标失败: {_e}")
+
+            elapsed = time.time() - start
+            return SkillResult(
+                success=True,
+                output={"updated": True, "total_landmarks": total},
+                cost_time=elapsed,
+                logs=[f"update_map: added '{name}' at ({n:.0f},{e:.0f})"],
+            )
+        except Exception as e:
+            return SkillResult(success=False, error_msg=f"更新地图失败: {e}", cost_time=time.time()-start)

@@ -30,3 +30,8 @@ Micro-XRCE-DDS-Agent/
 # Logs & temp
 *.log
 data/
+doctor/memory/backups/
+*.bak
+*.bak2
+*.bak3
+logs/

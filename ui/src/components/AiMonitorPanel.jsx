@@ -5,6 +5,7 @@
  * 下栏: 三栏活动面板 (LLM输出 | 规划步骤 | 系统日志)
  */
 import { useRef, useEffect, useState } from 'react'
+import MapView from './MapView'
 
 /* ── LiDAR 极坐标雷达图 ──────────────────────────────────── */
 function LidarRadar({ lidarData, size = 140 }) {
@@ -293,36 +294,62 @@ function SysLogColumn({ logs, aiThinking }) {
 /* ── 主面板 ──────────────────────────────────────────────── */
 export default function AiMonitorPanel({
   sensorCameras, sensorLidar, aiThinking, aiStream, lastAiPlan, logs, onOpenCockpit,
+  socket, worldState, onMapCommand,
 }) {
+  const [mapMode, setMapMode] = useState(false)
+
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', gap: 6, overflow: 'hidden' }}>
 
-      {/* 上栏: 传感器 */}
-      <div style={{ display: 'flex', gap: 6, flexShrink: 0, height: 220, minHeight: 220,
-        background: '#0a0e14', borderRadius: 6, padding: 6,
-        border: '1px solid rgba(34,197,94,0.1)', overflow: 'hidden' }}>
-        <div style={{ flex: 1, display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gridTemplateRows: '1fr 1fr',
-          gap: 3, overflow: 'hidden' }}>
-          <div onClick={() => onOpenCockpit('front')} style={{ cursor: 'pointer' }}>
-            <CameraView src={sensorCameras?.front?.image} label="▲ 前" />
-          </div>
-          <div onClick={() => onOpenCockpit('down')} style={{ cursor: 'pointer' }}>
-            <CameraView src={sensorCameras?.down?.image} label="⊙ 下" />
-          </div>
-          <div onClick={() => onOpenCockpit('right')} style={{ cursor: 'pointer' }}>
-            <CameraView src={sensorCameras?.right?.image} label="▶ 右" />
-          </div>
-          <div onClick={() => onOpenCockpit('left')} style={{ cursor: 'pointer' }}>
-            <CameraView src={sensorCameras?.left?.image} label="◀ 左" />
-          </div>
-          <div onClick={() => onOpenCockpit('rear')} style={{ cursor: 'pointer' }}>
-            <CameraView src={sensorCameras?.rear?.image} label="▼ 后" />
-          </div>
+      {/* 上栏: 态势图 / 传感器 切换 */}
+      <div style={{ display: 'flex', flexDirection: 'column', flexShrink: 0, height: mapMode ? 380 : 220, minHeight: mapMode ? 380 : 220,
+        background: '#0a0e14', borderRadius: 6, border: '1px solid rgba(34,197,94,0.1)', overflow: 'hidden', transition: 'height 0.3s' }}>
+        {/* Tab 切换 */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 0, flexShrink: 0, borderBottom: '1px solid rgba(34,197,94,0.1)' }}>
+          <button onClick={() => setMapMode(false)}
+            style={{ padding: '4px 12px', background: !mapMode ? 'rgba(34,197,94,0.1)' : 'transparent', border: 'none',
+              borderBottom: !mapMode ? '2px solid #22c55e' : '2px solid transparent',
+              color: !mapMode ? '#22c55e' : '#4a5568', fontSize: 10, cursor: 'pointer', fontFamily: 'monospace' }}>
+            📡 传感器
+          </button>
+          <button onClick={() => setMapMode(true)}
+            style={{ padding: '4px 12px', background: mapMode ? 'rgba(0,212,255,0.1)' : 'transparent', border: 'none',
+              borderBottom: mapMode ? '2px solid #00d4ff' : '2px solid transparent',
+              color: mapMode ? '#00d4ff' : '#4a5568', fontSize: 10, cursor: 'pointer', fontFamily: 'monospace' }}>
+            🗺 态势图
+          </button>
         </div>
-        <div style={{ flexShrink: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
-          <LidarRadar lidarData={sensorLidar} size={140} />
-          <span style={{ fontSize: 8, color: 'rgba(34,197,94,0.4)', fontFamily: 'monospace', letterSpacing: 2 }}>LIDAR 3D</span>
-        </div>
+
+        {!mapMode ? (
+          <div style={{ flex: 1, display: 'flex', gap: 6, padding: 6, overflow: 'hidden' }}>
+            <div style={{ flex: 1, display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gridTemplateRows: '1fr 1fr', gap: 3, overflow: 'hidden' }}>
+              <div onClick={() => onOpenCockpit('front')} style={{ cursor: 'pointer' }}><CameraView src={sensorCameras?.front?.image} label="▲ 前" /></div>
+              <div onClick={() => onOpenCockpit('down')} style={{ cursor: 'pointer' }}><CameraView src={sensorCameras?.down?.image} label="⊙ 下" /></div>
+              <div onClick={() => onOpenCockpit('right')} style={{ cursor: 'pointer' }}><CameraView src={sensorCameras?.right?.image} label="▶ 右" /></div>
+              <div onClick={() => onOpenCockpit('left')} style={{ cursor: 'pointer' }}><CameraView src={sensorCameras?.left?.image} label="◀ 左" /></div>
+              <div onClick={() => onOpenCockpit('rear')} style={{ cursor: 'pointer' }}><CameraView src={sensorCameras?.rear?.image} label="▼ 后" /></div>
+            </div>
+            <div style={{ flexShrink: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
+              <LidarRadar lidarData={sensorLidar} size={140} />
+              <span style={{ fontSize: 8, color: 'rgba(34,197,94,0.4)', fontFamily: 'monospace', letterSpacing: 2 }}>LIDAR 3D</span>
+            </div>
+          </div>
+        ) : (
+          <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
+            <MapView socket={socket} worldState={worldState} onCommand={onMapCommand} />
+            {/* 画中画摄像头 */}
+            <div style={{ position: 'absolute', bottom: 8, left: 8, display: 'flex', gap: 4, zIndex: 5 }}>
+              <div style={{ width: 80, height: 60, borderRadius: 4, overflow: 'hidden', border: '1px solid rgba(34,197,94,0.3)',
+                cursor: 'pointer', opacity: 0.85 }} onClick={() => onOpenCockpit('front')}>
+                <CameraView src={sensorCameras?.front?.image} label="前" />
+              </div>
+              <div style={{ width: 80, height: 60, borderRadius: 4, overflow: 'hidden', border: '1px solid rgba(34,197,94,0.3)',
+                cursor: 'pointer', opacity: 0.85 }} onClick={() => onOpenCockpit('down')}>
+                <CameraView src={sensorCameras?.down?.image} label="下" />
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* 下栏: 三栏活动面板 */}

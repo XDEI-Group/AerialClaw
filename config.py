@@ -91,6 +91,13 @@ PROVIDERS: dict[str, dict] = {
 
     # VLM - Vision Language Model (for image analysis)
     # VLM - 视觉语言模型（用于图像深度分析）
+    # Doctor Agent (doctor/agent.py)
+    # 设备接入工程师，需要 Function Calling 能力
+    "doctor": {
+        "provider": _env("DOCTOR_LLM_PROVIDER", "") or None,
+        "model":    _env("DOCTOR_LLM_MODEL", "") or None,
+    },
+
     "vlm": {
         "api_type":      "openai_compat",
         "base_url":      _env("VLM_BASE_URL", _env("LLM_BASE_URL", "https://api.openai.com/v1")),
@@ -142,6 +149,13 @@ MODULE_CONFIG: dict[str, dict] = {
 
     # VLM vision module (perception/vlm_analyzer.py)
     # 视觉语言模型模块
+    # Doctor Agent (doctor/agent.py)
+    # 设备接入工程师，需要 Function Calling 能力
+    "doctor": {
+        "provider": _env("DOCTOR_LLM_PROVIDER", "") or None,
+        "model":    _env("DOCTOR_LLM_MODEL", "") or None,
+    },
+
     "vlm": {
         "provider": "vlm",
         "model":    None,
