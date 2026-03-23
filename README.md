@@ -146,7 +146,7 @@ This design supports research across various application scenarios:
 
 ## Simulation Verification Environment
 
-Currently implemented in a **PX4 SITL + Gazebo Harmonic** simulation environment:
+Currently implemented in an **AirSim + OpenFly** simulation environment (Shanghai urban scene):
 
 <p align="center">
   <img src="assets/demo.gif" alt="AirSim City Patrol Demo" width="720" />
@@ -156,13 +156,13 @@ Currently implemented in a **PX4 SITL + Gazebo Harmonic** simulation environment
 
 | Component | Technical Choice |
 |-----------|------------------|
-| Flight Control System | PX4 v1.15 Software-in-the-Loop |
-| Simulation Environment | Gazebo Harmonic (gz sim 8.x) |
-| Sensor Models | 5 cameras + 3D LiDAR (360°×16 layers) |
-| Communication Protocol | Micro XRCE-DDS + MAVSDK gRPC |
+| Flight Control System | AirSim SimpleFlight (API-based control) |
+| Simulation Environment | Unreal Engine 4 + OpenFly AirSim (Shanghai urban scene) |
+| Sensor Models | Front camera + simulated LiDAR (360°) |
+| Communication Protocol | AirSim RPC (pure-socket msgpack) |
 | Coordinate System | NED (North-East-Down) local coordinate system |
 
-**Simulation Scene Elements**: Collapsed buildings, trapped person models, fire and smoke effects, obstacle arrangements, ground markings, etc.
+**Simulation Scene Elements**: High-rise commercial district, mid-rise buildings, low-rise residential blocks, wide roads, open areas for takeoff/landing.
 
 ## Web Monitoring Interface
 
