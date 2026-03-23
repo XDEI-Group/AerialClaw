@@ -7,6 +7,7 @@
   <img src="https://img.shields.io/badge/Core-LLM%20Decision%20Making-orange" alt="LLM driven">
   <img src="https://img.shields.io/badge/Field-Embodied%20AI-black" alt="focus">
   <img src="https://img.shields.io/badge/Simulation-PX4+Gazebo-purple" alt="PX4 Gazebo">
+  <img src="https://img.shields.io/badge/Simulation-OpenFly+AirSim-blue" alt="OpenFly AirSim">
 </p>
 
 **English** | [中文](README_CN.md)
