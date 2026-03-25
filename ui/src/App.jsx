@@ -1,17 +1,13 @@
 /**
- * App.jsx — AerialClaw v2.0 控制台主界面
+ * App.jsx — AerialClaw v2.0 控制台主界面 (精简版)
  *
  * 布局：
  *   ┌──────────────────────────────────────────────────────┐
  *   │  Header: Logo | 连接 | 初始化 | 模式 | Tab 导航        │
  *   ├──────────────────────────────────────────────────────┤
  *   │  Tab 内容区                                           │
- *   │   控制台 → RobotPanel + SkillPanel/AiMonitor + AiPanel │
- *   │   设备   → DeviceSetupPanel                           │
+ *   │   控制台 → RobotPanel + SkillPanel/AiMonitor          │
  *   │   技能   → SkillEvolutionPanel                        │
- *   │   记忆   → MemoryPanel                                │
- *   │   安全   → SafetyPanel                                │
- *   │   健康   → DoctorPanel                                │
  *   └──────────────────────────────────────────────────────┘
  */
 import { useState, useEffect } from 'react'
@@ -19,27 +15,17 @@ import { useSocket } from './hooks/useSocket'
 import Header from './components/Header'
 import RobotPanel from './components/RobotPanel'
 import SkillPanel from './components/SkillPanel'
-import AiPanel from './components/AiPanel'
 import LogPanel from './components/LogPanel'
 import SensorPanel from './components/SensorPanel'
 import AiMonitorPanel from './components/AiMonitorPanel'
 import ModelConfig from './components/ModelConfig'
 import CockpitView from './components/CockpitView'
-import DeviceSetupPanel from './components/DeviceSetupPanel'
 import SkillEvolutionPanel from './components/SkillEvolutionPanel'
-import BootstrapWizard from './components/BootstrapWizard'
-import DoctorPanel from './components/DoctorPanel'
-import SafetyPanel from './components/SafetyPanel'
-import MemoryPanel from './components/MemoryPanel'
 import './App.css'
 
 const TABS = [
   { key: 'console',  label: '控制台',  icon: '🖥' },
-  { key: 'device',   label: '设备',    icon: '✈️' },
-  { key: 'skill',    label: '技能',    icon: '🧩' },
-  { key: 'memory',   label: '记忆',    icon: '🧠' },
-  { key: 'safety',   label: '安全',    icon: '🛡' },
-  { key: 'doctor',   label: '健康检查', icon: '🩺' },
+  { key: 'skill',    label: '技能进化', icon: '🧩' },
 ]
 
 function TabBar({ activeTab, onTabChange }) {
@@ -97,15 +83,6 @@ export default function App() {
   const [activeTab,       setActiveTab]       = useState('console')
   const [aiReportVisible, setAiReportVisible] = useState(false)
   const [showModelConfig, setShowModelConfig] = useState(false)
-  const [showBootstrap,   setShowBootstrap]   = useState(false)
-
-  // Bootstrap 检测
-  useEffect(() => {
-    fetch('/api/bootstrap/status')
-      .then(r => r.json())
-      .then(d => { if (d.needs_bootstrap) setShowBootstrap(true) })
-      .catch(() => {})
-  }, [])
 
   useEffect(() => {
     if (lastAiReport) setAiReportVisible(true)
@@ -125,11 +102,6 @@ export default function App() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
-
-      {/* Bootstrap 向导（全屏遮罩） */}
-      {showBootstrap && (
-        <BootstrapWizard onComplete={() => setShowBootstrap(false)} />
-      )}
 
       {/* 驾驶舱全屏视图 */}
       {cockpitOpen && (
@@ -253,23 +225,6 @@ export default function App() {
                   </div>
                 )}
               </div>
-              {/* AI 面板 */}
-              <div style={{
-                flex: 1, minHeight: 0,
-                padding: 10, overflow: 'hidden',
-                background: 'var(--bg-panel)',
-              }}>
-                <AiPanel
-                  mode={systemStatus.mode}
-                  isExecuting={systemStatus.is_executing}
-                  lastAiPlan={lastAiPlan}
-                  lastAiReport={aiReportVisible ? lastAiReport : null}
-                  onSubmitTask={handleSubmitAiTask}
-                  onStop={stopExecution}
-                  chatHistory={chatHistory}
-                  onSendChat={sendChat}
-                />
-              </div>
             </div>
           </div>
 
@@ -280,38 +235,10 @@ export default function App() {
         </div>
       )}
 
-      {/* ── 设备 Tab ──────────────────────────────────────────────────────────── */}
-      {activeTab === 'device' && (
-        <div style={{ flex: 1, overflow: 'hidden', minHeight: 0 }}>
-          <DeviceSetupPanel socket={socket} connected={connected} />
-        </div>
-      )}
-
-      {/* ── 技能 Tab ──────────────────────────────────────────────────────────── */}
+      {/* ── 技能进化 Tab ──────────────────────────────────────────────────────── */}
       {activeTab === 'skill' && (
         <div style={{ flex: 1, overflow: 'hidden', minHeight: 0 }}>
           <SkillEvolutionPanel socket={socket} connected={connected} />
-        </div>
-      )}
-
-      {/* ── 记忆 Tab ──────────────────────────────────────────────────────────── */}
-      {activeTab === 'memory' && (
-        <div style={{ flex: 1, overflow: 'hidden', minHeight: 0 }}>
-          <MemoryPanel />
-        </div>
-      )}
-
-      {/* ── 安全 Tab ──────────────────────────────────────────────────────────── */}
-      {activeTab === 'safety' && (
-        <div style={{ flex: 1, overflow: 'hidden', minHeight: 0 }}>
-          <SafetyPanel />
-        </div>
-      )}
-
-      {/* ── 健康检查 Tab ──────────────────────────────────────────────────────── */}
-      {activeTab === 'doctor' && (
-        <div style={{ flex: 1, overflow: 'hidden', minHeight: 0 }}>
-          <DoctorPanel />
         </div>
       )}
 
