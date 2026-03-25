@@ -55,19 +55,15 @@ def _check_armed() -> bool:
 
 class Takeoff(Skill):
     name = "takeoff"
-    description = "无人机解锁电机并起飞到指定高度。前提：无人机在地面。"
+    description = "从当前高度往上飞指定米数（相对上升）。altitude=30表示从当前位置再往上飞30米。"
     skill_type = "hard"
     robot_type = ["UAV"]
-    preconditions = ["battery > 20%", "robot_type == UAV", "in_air == False"]
+    preconditions = []
     cost = 2.0
     input_schema = {"altitude": "float，起飞目标高度（米），默认 5.0"}
     output_schema = {"actual_altitude": "float", "takeoff_time": "float"}
 
     def check_precondition(self, robot_state: dict) -> bool:
-        if robot_state.get("battery", 100) <= 20:
-            return False
-        if _check_in_air():
-            return False  # 已在空中，不能再起飞
         return True
 
     def execute(self, input_data: dict) -> SkillResult:
@@ -95,19 +91,15 @@ class Takeoff(Skill):
 
 class Land(Skill):
     name = "land"
-    description = "无人机降落到地面。前提：无人机在空中。"
+    description = "安全降落：逐步下降并用下方深度探测地面，接近地面自动停止，不会穿模。"
     skill_type = "hard"
     robot_type = ["UAV"]
-    preconditions = ["battery > 10%", "robot_type == UAV", "in_air == True"]
+    preconditions = []
     cost = 1.5
     input_schema = {}
     output_schema = {"landed_position": "[lat, lon, alt]", "land_time": "float"}
 
     def check_precondition(self, robot_state: dict) -> bool:
-        if robot_state.get("battery", 100) <= 10:
-            return False
-        if not _check_in_air():
-            return False  # 不在空中，无法降落
         return True
 
     def execute(self, input_data: dict) -> SkillResult:
@@ -140,56 +132,70 @@ class Land(Skill):
 
 class FlyTo(Skill):
     name = "fly_to"
-    description = "无人机飞行到指定 NED 坐标。前提：无人机必须在空中。north=正北, east=正东, down=向下（负值=向上）。"
+    description = "底层移动技能：飞到指定NED坐标。down负值=高度，如down=-80表示80m高。⚠️使用前必须先get_position！高度低于50m会被自动修正到80m。"
     skill_type = "hard"
     robot_type = ["UAV"]
-    preconditions = ["battery > 20%", "robot_type == UAV", "in_air == True"]
+    preconditions = []
     cost = 3.0
     input_schema = {
-        "target_position": "[north, east, down]，NED 坐标（米）",
-        "speed": "float，飞行速度 m/s，默认 2.0",
+        "target_position": "[north, east, down]，NED坐标。down=-80=80m高。⚠️高度<50m会被自动修正！先get_position再决定高度！",
+        "speed": "float，飞行速度 m/s，默认 8.0",
     }
-    output_schema = {"arrived_position": "[n, e, d]", "distance_traveled": "float"}
+    output_schema = {"arrived_position": "[n, e, d]", "distance_traveled": "float", "altitude": "float", "start_position": "[n, e, d]"}
 
     def check_precondition(self, robot_state: dict) -> bool:
-        if robot_state.get("battery", 100) <= 20:
-            return False
-        if not _check_in_air():
-            return False  # 必须在空中才能飞行
         return True
 
     def execute(self, input_data: dict) -> SkillResult:
-        if not _check_in_air():
-            return SkillResult(
-                success=False,
-                error_msg="无人机不在空中，请先执行 takeoff 起飞",
-                logs=["❌ 前提检查失败: 不在空中，请先起飞"]
-            )
-
-        target = input_data.get("target_position", [0, 0, -5])
-        speed = input_data.get("speed", 2.0)
+        target = input_data.get("target_position", [0, 0, -80])
+        speed = input_data.get("speed", 8.0)
         adapter = _get_adapter()
         if adapter is None:
             return SkillResult(success=False, error_msg="无仿真适配器")
         
-        n, e, d = float(target[0]), float(target[1]), float(target[2])
-        # 安全修正: LLM 经常把高度写成正数 (如 10 表示 10m高)
-        # NED 里 down 负值 = 向上, 正值 = 向下(地下)
-        # 无人机不可能往地下飞, 如果 d > 0 说明 LLM 想表达的是高度, 自动取反
+        pos = adapter.get_position()
+        current_alt = abs(pos.down)
+        
+        n, e = float(target[0]), float(target[1])
+        d = float(target[2]) if len(target) > 2 else -80.0
+        
+        # down 正值=地下，修正
         if d > 0:
-            logger.warning(f"fly_to: down={d} > 0 (地下), 自动修正为 down={-d} (高度{d}m)")
             d = -d
+        
+        # 高度安全：< 50m 自动调到 80m
+        target_alt = abs(d)
+        height_corrected = False
+        if target_alt < 50:
+            logger.warning(f"fly_to: 目标高度{target_alt:.0f}m不安全，自动调整到80m")
+            d = -80.0
+            target_alt = 80.0
+            height_corrected = True
+        
+        logger.info(f"fly_to: ({pos.north:.1f},{pos.east:.1f},alt={current_alt:.0f}m) → ({n},{e},alt={target_alt:.0f}m)")
+        
         result = adapter.fly_to_ned(n, e, d, speed)
         
-        final = result.data.get("position", target)
-        dist = (final[0]**2 + final[1]**2 + final[2]**2) ** 0.5
+        final_pos = adapter.get_position()
+        final_alt = abs(final_pos.down)
+        dist = ((final_pos.north - pos.north)**2 + (final_pos.east - pos.east)**2) ** 0.5
+        
+        msg = result.message
+        if height_corrected and result.success:
+            msg = f"已到达，高度从{target_alt:.0f}m（你给的值不安全，已自动修正到80m）"
         
         return SkillResult(
             success=result.success,
-            output={"arrived_position": final, "distance_traveled": round(dist, 2)},
-            error_msg=result.message if not result.success else "",
+            output={
+                "start_position": [round(pos.north, 1), round(pos.east, 1), round(pos.down, 1)],
+                "arrived_position": [round(final_pos.north, 1), round(final_pos.east, 1), round(final_pos.down, 1)],
+                "distance_traveled": round(dist, 1),
+                "altitude": round(final_alt, 1),
+                "height_corrected": height_corrected,
+            },
+            error_msg=msg if not result.success else "",
             cost_time=result.duration,
-            logs=[f"fly_to NED=({n},{e},{d}): {result.message} [{adapter.name}]"],
+            logs=[f"fly_to ({n},{e}) alt={final_alt:.0f}m: {msg}"],
         )
 
 
@@ -202,16 +208,12 @@ class Hover(Skill):
     description = "无人机在当前位置悬停指定时间。前提：无人机必须在空中。"
     skill_type = "hard"
     robot_type = ["UAV"]
-    preconditions = ["battery > 15%", "robot_type == UAV", "in_air == True"]
+    preconditions = []
     cost = 1.0
     input_schema = {"duration": "float，悬停时间（秒），默认 5.0"}
     output_schema = {"hover_position": "[n, e, d]", "actual_duration": "float"}
 
     def check_precondition(self, robot_state: dict) -> bool:
-        if robot_state.get("battery", 100) <= 15:
-            return False
-        if not _check_in_air():
-            return False
         return True
 
     def execute(self, input_data: dict) -> SkillResult:
@@ -244,39 +246,38 @@ class ChangeAltitude(Skill):
     description = "在当前水平位置上调整飞行高度。前提：无人机必须在空中。打断后想往上飞用这个。"
     skill_type = "hard"
     robot_type = ["UAV"]
-    preconditions = ["battery > 20%", "robot_type == UAV", "in_air == True"]
+    preconditions = []
     cost = 2.0
     input_schema = {"altitude": "float，目标高度（米，正数），默认 10.0"}
     output_schema = {"arrived_position": "[n, e, d]", "target_altitude": "float"}
 
     def check_precondition(self, robot_state: dict) -> bool:
-        if robot_state.get("battery", 100) <= 20:
-            return False
-        if not _check_in_air():
-            return False
         return True
 
     def execute(self, input_data: dict) -> SkillResult:
-        if not _check_in_air():
-            return SkillResult(success=False, error_msg="无人机不在空中，请先起飞", logs=["❌ 前提检查失败: 不在空中"])
-
         altitude = float(input_data.get("altitude", 10.0))
         adapter = _get_adapter()
         if adapter is None:
             return SkillResult(success=False, error_msg="无仿真适配器")
 
-        # 获取当前水平位置，只改高度
+        # 获取当前位置
         pos = adapter.get_position()
-        target_down = -abs(altitude)  # 正数高度转 NED down（负值=上）
-        result = adapter.fly_to_ned(pos.north, pos.east, target_down, speed=2.0)
+        current_alt = abs(pos.down)
+        target_down = -abs(altitude)
+        result = adapter.fly_to_ned(pos.north, pos.east, target_down, speed=5.0)
 
-        final = result.data.get("position", [pos.north, pos.east, target_down])
+        final_pos = adapter.get_position()
         return SkillResult(
             success=result.success,
-            output={"arrived_position": final, "target_altitude": altitude},
             error_msg=result.message if not result.success else "",
-            cost_time=result.duration,
-            logs=[f"change_altitude → {altitude}m: {result.message} [{adapter.name}]"],
+            data={
+                "previous_altitude": round(current_alt, 1),
+                "target_altitude": altitude,
+                "current_altitude": round(abs(final_pos.down), 1),
+                "current_position": [round(final_pos.north, 1), round(final_pos.east, 1), round(final_pos.down, 1)],
+            },
+            cost_time=0,
+            logs=[f"change_altitude: {current_alt:.0f}m → {abs(final_pos.down):.0f}m"],
         )
 
 
@@ -289,13 +290,13 @@ class GetPosition(Skill):
     description = "获取无人机当前的 GPS 坐标和 NED 局部坐标。"
     skill_type = "hard"
     robot_type = ["UAV"]
-    preconditions = ["robot_type == UAV"]
+    preconditions = []
     cost = 0.5
     input_schema = {}
     output_schema = {"gps": {"lat": "float", "lon": "float", "alt": "float"}, "ned": "[n, e, d]"}
 
     def check_precondition(self, robot_state: dict) -> bool:
-        return robot_state.get("robot_type", "") == "UAV"
+        return True
 
     def execute(self, input_data: dict) -> SkillResult:
         adapter = _get_adapter()
@@ -327,13 +328,13 @@ class GetBattery(Skill):
     description = "获取无人机电池电压和剩余电量。"
     skill_type = "hard"
     robot_type = ["UAV"]
-    preconditions = ["robot_type == UAV"]
+    preconditions = []
     cost = 0.5
     input_schema = {}
     output_schema = {"voltage_v": "float", "remaining_percent": "float"}
 
     def check_precondition(self, robot_state: dict) -> bool:
-        return robot_state.get("robot_type", "") == "UAV"
+        return True
 
     def execute(self, input_data: dict) -> SkillResult:
         adapter = _get_adapter()
@@ -361,13 +362,13 @@ class ReturnToLaunch(Skill):
     description = "无人机返回起飞位置并自动降落。调用后无人机会在地面, 不需要再额外调用 land。"
     skill_type = "hard"
     robot_type = ["UAV"]
-    preconditions = ["battery > 10%", "robot_type == UAV"]
+    preconditions = []
     cost = 2.0
     input_schema = {}
     output_schema = {"rtl_time": "float"}
 
     def check_precondition(self, robot_state: dict) -> bool:
-        return robot_state.get("battery", 100) > 10
+        return True
 
     def execute(self, input_data: dict) -> SkillResult:
         adapter = _get_adapter()
@@ -399,7 +400,7 @@ class FlyRelative(Skill):
     )
     skill_type = "hard"
     robot_type = ["UAV"]
-    preconditions = ["battery > 20%", "in_air == True"]
+    preconditions = []
     cost = 3.0
     input_schema = {
         "forward": "float, 向前(+)或向后(-), 单位米, 默认0",
@@ -414,9 +415,7 @@ class FlyRelative(Skill):
     }
 
     def check_precondition(self, robot_state: dict) -> bool:
-        if robot_state.get("battery", 100) <= 20:
-            return False
-        return _check_in_air()
+        return True
 
     def execute(self, input_data: dict) -> SkillResult:
         if not _check_in_air():
@@ -551,7 +550,7 @@ class LookAround(Skill):
     )
     skill_type = "hard"
     robot_type = ["UAV"]
-    preconditions = ["in_air == True"]
+    preconditions = []
     cost = 2.0
     input_schema = {
         "duration": "float, 旋转持续时间(秒), 默认8 (约转一圈)",
@@ -562,7 +561,7 @@ class LookAround(Skill):
     }
 
     def check_precondition(self, robot_state: dict) -> bool:
-        return _check_in_air()
+        return True
 
     def execute(self, input_data: dict) -> SkillResult:
         adapter = _get_adapter()
@@ -700,7 +699,7 @@ class Observe(Skill):
     description = "抓取无人机前向摄像头图像，返回 base64 编码的 JPEG 图像。用于视觉感知和目标识别。"
     skill_type = "hard"
     robot_type = ["UAV"]
-    preconditions = ["battery > 10%", "camera_sensor == operational"]
+    preconditions = []
     cost = 1.5
     input_schema = {
         "camera_name": "str，摄像头名称，默认 'front_custom'（可选）",
@@ -712,7 +711,7 @@ class Observe(Skill):
     }
 
     def check_precondition(self, robot_state: dict) -> bool:
-        return robot_state.get("battery", 100) > 10
+        return True
 
     def execute(self, input_data: dict) -> SkillResult:
         import time
@@ -764,3 +763,235 @@ class Observe(Skill):
                 cost_time=elapsed,
                 logs=[f"⚠️ observe: 未获取到图像（adapter={adapter.name}），耗时 {elapsed}s"],
             )
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  OrbitInspect — 航点绕楼巡检（逐层爬升 + VLM 窗户检测）
+# ══════════════════════════════════════════════════════════════════════════════
+
+class OrbitInspect(Skill):
+    """围绕建筑物飞行巡检的硬技能。
+
+    使用预设航点（非连续螺旋），避免穿模。
+    根据建筑尺寸在四周生成航点，逐层爬升，
+    每个航点暂停并调用 observe+VLM 分析窗户/外墙状况。
+    """
+
+    name = "orbit_inspect"
+    description = (
+        "围绕指定建筑物进行逐层爬升巡检。"
+        "给定建筑中心坐标和尺寸，在四周生成安全航点，逐层升高飞行。"
+        "每个航点自动拍照并用VLM分析建筑外观（窗户破损/裂纹/异常）。"
+        "完成后返回所有层的巡检报告。"
+    )
+    skill_type = "hard"
+    robot_type = ["UAV"]
+    preconditions = []
+    cost = 15.0
+    input_schema = {
+        "center": "[north, east], 建筑中心 NED 坐标（米）",
+        "radius": "float, 绕飞半径（米）, 即建筑外墙到航点的距离, 默认 25",
+        "start_height": "float, 起始巡检高度（米）, 默认 20",
+        "end_height": "float, 终止巡检高度（米）, 默认 80",
+        "height_step": "float, 每层高度间隔（米）, 默认 15",
+        "points_per_layer": "int, 每层航点数, 默认 8 (八边形)",
+        "speed": "float, 飞行速度 m/s, 默认 2.0",
+        "focus": "str, VLM 重点关注内容, 默认 '检查窗户是否破损、裂纹、缺失，外墙是否有开裂或异常'",
+    }
+    output_schema = {
+        "layers_inspected": "int, 巡检层数",
+        "total_waypoints": "int, 总航点数",
+        "observations": "list, 每个航点的VLM观察结果",
+        "summary": "str, 巡检总结",
+    }
+
+    def check_precondition(self, robot_state: dict) -> bool:
+        return True
+
+    def execute(self, input_data: dict) -> SkillResult:
+        import math
+
+        center = input_data.get("center", [0, 0])
+        radius = float(input_data.get("radius", 25))
+        start_h = float(input_data.get("start_height", 20))
+        end_h = float(input_data.get("end_height", 80))
+        h_step = float(input_data.get("height_step", 15))
+        pts_per_layer = int(input_data.get("points_per_layer", 8))
+        speed = float(input_data.get("speed", 2.0))
+        focus = input_data.get("focus",
+            "检查窗户是否破损、裂纹、缺失，外墙是否有开裂或异常")
+
+        adapter = _get_adapter()
+        if adapter is None:
+            return SkillResult(success=False, error_msg="无仿真适配器")
+        if not _check_in_air():
+            return SkillResult(success=False,
+                error_msg="无人机不在空中，请先执行 takeoff 起飞")
+
+        cn, ce = float(center[0]), float(center[1])
+        start_time = time.time()
+        all_observations = []
+        logs = []
+
+        # 计算层数
+        layers = []
+        h = start_h
+        while h <= end_h:
+            layers.append(h)
+            h += h_step
+        if not layers:
+            layers = [start_h]
+
+        logs.append(f"🔄 orbit_inspect: 中心({cn},{ce}), 半径{radius}m, "
+                     f"{len(layers)}层 ({start_h}-{end_h}m), 每层{pts_per_layer}点")
+
+        for layer_idx, height in enumerate(layers):
+            target_down = -height  # NED: 负值 = 向上
+            logs.append(f"📐 第{layer_idx+1}层: 高度{height}m")
+
+            for pt_idx in range(pts_per_layer):
+                # 计算航点: 均匀分布在圆周上
+                angle = 2 * math.pi * pt_idx / pts_per_layer
+                wp_n = cn + radius * math.cos(angle)
+                wp_e = ce + radius * math.sin(angle)
+
+                # 飞到航点
+                result = adapter.fly_to_ned(wp_n, wp_e, target_down, speed)
+                if not result.success:
+                    logs.append(f"⚠️ 航点({wp_n:.0f},{wp_e:.0f})飞行失败: {result.message}")
+                    continue
+
+                # 到达航点后悬停1秒稳定画面
+                time.sleep(1.0)
+
+                # 调用 VLM 观察
+                obs_result = self._observe_at_waypoint(
+                    adapter, height, layer_idx, pt_idx, angle, focus)
+                all_observations.append(obs_result)
+
+                direction_name = self._angle_to_direction(angle)
+                status = "✅" if obs_result.get("has_image") else "⚠️"
+                logs.append(
+                    f"  {status} 点{pt_idx+1}/{pts_per_layer} "
+                    f"({direction_name}面): {obs_result.get('summary', '无描述')[:60]}")
+
+        elapsed = round(time.time() - start_time, 1)
+
+        # 生成汇总
+        issues_found = [o for o in all_observations
+                        if any(kw in o.get("summary", "")
+                               for kw in ["破损", "裂纹", "损坏", "缺失", "异常",
+                                          "crack", "broken", "damage", "missing"])]
+        if issues_found:
+            summary = (f"巡检完成: {len(layers)}层, {len(all_observations)}个观测点, "
+                       f"发现{len(issues_found)}处疑似异常。耗时{elapsed}s")
+        else:
+            summary = (f"巡检完成: {len(layers)}层, {len(all_observations)}个观测点, "
+                       f"未发现明显异常。耗时{elapsed}s")
+
+        logs.append(f"🏁 {summary}")
+
+        return SkillResult(
+            success=True,
+            output={
+                "layers_inspected": len(layers),
+                "total_waypoints": len(all_observations),
+                "observations": all_observations,
+                "summary": summary,
+            },
+            cost_time=elapsed,
+            logs=logs,
+        )
+
+    def _observe_at_waypoint(self, adapter, height, layer_idx, pt_idx, angle, focus):
+        """在航点拍照+VLM分析"""
+        import base64 as b64mod
+
+        obs = {
+            "layer": layer_idx + 1,
+            "point": pt_idx + 1,
+            "height": height,
+            "angle_deg": round(angle * 180 / 3.14159, 1),
+            "direction": self._angle_to_direction(angle),
+            "has_image": False,
+            "summary": "",
+            "objects": [],
+        }
+
+        # 抓图
+        image_bytes = None
+        try:
+            if hasattr(adapter, 'get_image_base64'):
+                b64_str = adapter.get_image_base64()
+                if b64_str:
+                    image_bytes = b64mod.b64decode(b64_str)
+        except Exception as e:
+            logger.warning(f"orbit_inspect 抓图失败: {e}")
+
+        if not image_bytes:
+            obs["summary"] = "抓图失败"
+            return obs
+
+        obs["has_image"] = True
+
+        # VLM 分析
+        try:
+            from perception.vlm_analyzer import get_analyzer, init_analyzer
+            analyzer = get_analyzer()
+            if analyzer is None:
+                analyzer = init_analyzer()
+
+            result = analyzer.analyze_image(
+                image=image_bytes,
+                system_prompt=(
+                    "你是一架无人机的建筑巡检视觉系统。分析摄像头图像，重点检查建筑外墙和窗户。"
+                    "用简洁的中文回答。重点关注: 窗户破损/裂纹/缺失, 外墙开裂/渗水/脱落, 其他异常。"
+                    '输出 JSON: {"description": "观察描述", "objects": [{"type": "类型", "status": "正常/异常", "detail": "细节"}], "issues": ["发现的问题"]}'
+                ),
+                user_prompt=(
+                    f"巡检高度: {height:.0f}米, 方向: {self._angle_to_direction(angle)}面。"
+                    f"重点关注: {focus}。"
+                    f"请分析这张建筑外观图像。"
+                ),
+                max_tokens=400,
+            )
+
+            if result:
+                desc = result.get("description", "无描述")
+                objects = result.get("objects", [])
+                issues = result.get("issues", [])
+                obs["summary"] = desc
+                obs["objects"] = objects
+                if issues:
+                    obs["issues"] = issues
+                    obs["summary"] += f" [问题: {', '.join(issues)}]"
+            else:
+                obs["summary"] = "VLM 返回为空"
+
+        except Exception as e:
+            logger.error(f"orbit_inspect VLM 异常: {e}")
+            obs["summary"] = f"VLM 分析失败: {e}"
+
+        return obs
+
+    @staticmethod
+    def _angle_to_direction(angle):
+        """角度(弧度) → 方位名称"""
+        import math
+        deg = (angle * 180 / math.pi) % 360
+        if deg < 22.5 or deg >= 337.5:
+            return "北"
+        elif deg < 67.5:
+            return "东北"
+        elif deg < 112.5:
+            return "东"
+        elif deg < 157.5:
+            return "东南"
+        elif deg < 202.5:
+            return "南"
+        elif deg < 247.5:
+            return "西南"
+        elif deg < 292.5:
+            return "西"
+        else:
+            return "西北"

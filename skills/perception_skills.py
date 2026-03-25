@@ -67,7 +67,7 @@ class DetectObject(Skill):
     description = "对采集的图像运行目标检测，将像素级图像转换为语义对象列表（类别/置信度/位置）。"
     skill_type = "perception"
     robot_type = ["UAV", "UGV"]
-    preconditions = ["battery > 10%", "camera_sensor == operational"]
+    preconditions = []
     cost = 1.0
     input_schema = {
         "image_id": "str，待检测图像 ID（来自 capture_image 输出）",
@@ -120,7 +120,7 @@ class RecognizeSpeech(Skill):
     description = "将机器人麦克风采集的音频转换为文本指令，供 Brain 模块解析执行。"
     skill_type = "perception"
     robot_type = ["UAV", "UGV"]
-    preconditions = ["battery > 10%", "microphone == operational"]
+    preconditions = []
     cost = 0.8
     input_schema = {
         "audio_id": "str，音频数据 ID",
@@ -161,7 +161,7 @@ class FusePerception(Skill):
     description = "融合图像目标检测结果与激光雷达扫描数据，生成带三维坐标的语义世界状态片段。"
     skill_type = "perception"
     robot_type = ["UAV", "UGV"]
-    preconditions = ["battery > 15%"]
+    preconditions = []
     cost = 1.2
     input_schema = {
         "detected_objects": "list，来自 detect_object 的检测结果",
@@ -245,7 +245,7 @@ class ScanArea(Skill):
     description = "通过 AirSim 获取相机图像进行区域扫描，返回图像数据用于目标检测。"
     skill_type = "perception"
     robot_type = ["UAV"]
-    preconditions = ["battery > 15%", "camera_sensor == operational"]
+    preconditions = []
     cost = 1.5
     input_schema = {
         "area_center": "[x, y, z]，扫描区域中心坐标",
@@ -367,7 +367,7 @@ class GetSensorData(Skill):
     description = "从 AirSim 获取真实传感器数据，包括 IMU、GPS、气压计等。"
     skill_type = "perception"
     robot_type = ["UAV", "UGV"]
-    preconditions = ["battery > 10%", "sensors operational"]
+    preconditions = []
     cost = 1.0
     input_schema = {
         "sensor_types": "list，要获取的传感器类型列表，默认 ['imu', 'gps', 'barometer']",
@@ -519,7 +519,7 @@ class Observe(Skill):
     )
     skill_type = "perception"
     robot_type = ["UAV"]
-    preconditions = ["in_air == True"]
+    preconditions = []
     cost = 4.0
     input_schema = {
         "direction": "str, 拍照方向: front/rear/left/right/down/around(环视), 默认front。后方用rear不用back, 向下用down",
@@ -570,13 +570,15 @@ class Observe(Skill):
         adapter = _get_adapter()
 
         # 路径 A: AirSim adapter — 返回 base64 JPEG，decode 成 bytes 直接给 VLM
+        _dir_to_cam = {"front": "cam_front", "left": "cam_left", "right": "cam_right", "rear": "cam_rear", "down": "cam_down"}
         try:
             if adapter and hasattr(adapter, 'get_image_base64'):
                 import base64 as b64mod
-                b64_str = adapter.get_image_base64()
+                cam_name = _dir_to_cam.get(direction, f"cam_{direction}")
+                b64_str = adapter.get_image_base64(camera_name=cam_name)
                 if b64_str:
-                    image = b64mod.b64decode(b64_str)  # bytes, VLM analyzer 直接支持
-                    logger.debug("通过 adapter.get_image_base64 抓图成功 (%d bytes)", len(image))
+                    image = b64mod.b64decode(b64_str)
+                    logger.debug("通过 adapter.get_image_base64(%s) 抓图成功 (%d bytes)", cam_name, len(image))
         except Exception as e:
             logger.warning("adapter 抓图失败: %s, 尝试 Gazebo 路径", e)
 
@@ -741,18 +743,20 @@ class Observe(Skill):
         for d in ["front", "left", "right", "rear", "down"]:
             try:
                 image = None
-                # 优先 Gazebo 多方向
-                if gz_camera is not None:
-                    image = gz_camera.capture(d)
-                # fallback: adapter 只有前向
-                if image is None and has_adapter_cam and d == "front":
+                # AirSim adapter 支持所有方向摄像头
+                _dir_to_cam = {"front": "cam_front", "left": "cam_left", "right": "cam_right", "rear": "cam_rear", "down": "cam_down"}
+                if has_adapter_cam:
                     try:
                         import base64 as b64mod
-                        b64_str = adapter.get_image_base64()
+                        cam_name = _dir_to_cam.get(d, f"cam_{d}")
+                        b64_str = adapter.get_image_base64(camera_name=cam_name)
                         if b64_str:
                             image = b64mod.b64decode(b64_str)
                     except Exception:
                         pass
+                # fallback Gazebo
+                if image is None and gz_camera is not None:
+                    image = gz_camera.capture(d)
                 if image is None:
                     all_descs.append(f"[{dir_cn[d]}] 未获取到图像")
                     continue
@@ -810,3 +814,121 @@ class Observe(Skill):
             cost_time=elapsed,
             logs=[f"observe 环视: {success_count}/4方向成功 ({elapsed:.1f}s)"],
         )
+
+
+class Perceive(Skill):
+    """
+    主动感知技能 — LLM 自己决定看什么方向、关注什么内容。
+    
+    与 observe 的区别：
+    - observe: 固定流程，拍所有方向，固定分析
+    - perceive: LLM 自定义 prompt，看特定方向，获取特定信息
+    
+    用法示例：
+    - perceive(direction="front", focus="前方建筑的窗户是否有破损？")
+    - perceive(direction="down", focus="下方地面是否适合降落？")
+    - perceive(direction="left", focus="左边有什么障碍物？距离多远？")
+    """
+    
+    name = "perceive"
+    description = "主动感知：查看指定方向的摄像头画面，用自定义问题获取特定信息。你可以自己决定看什么方向、问什么问题。"
+    skill_type = "perception"
+    
+    input_schema = {
+        "direction": "str，摄像头方向: front/left/right/rear/down",
+        "focus": "str，你想了解的信息，用自然语言描述（如'前方有没有障碍物？距离多远？'）",
+    }
+    
+    preconditions = []
+    
+    _DIR_ALIASES = {
+        "前": "front", "前方": "front", "forward": "front",
+        "左": "left", "左方": "left", "左侧": "left",
+        "右": "right", "右方": "right", "右侧": "right",
+        "后": "rear", "后方": "rear", "backward": "rear", "back": "rear",
+        "下": "down", "下方": "down", "below": "down",
+    }
+    
+    def execute(self, input_data=None, direction: str = "front", focus: str = "", **kwargs) -> SkillResult:
+        start = time.time()
+        
+        # 兼容 dict 输入（executor 传整个 dict 作为第一个参数）
+        if isinstance(input_data, dict):
+            direction = input_data.get("direction", direction)
+            focus = input_data.get("focus", focus)
+        elif isinstance(input_data, str):
+            direction = input_data
+        
+        # 方向别名映射
+        direction = self._DIR_ALIASES.get(direction, direction)
+        if direction not in ("front", "left", "right", "rear", "down"):
+            direction = "front"
+        
+        # 获取被动感知引擎
+        passive_engine = _get_passive_perception()
+        if passive_engine:
+            result = passive_engine.perceive_active(direction=direction, focus=focus)
+            elapsed = round(time.time() - start, 2)
+            
+            summary = result.get("summary", "无法获取信息")
+            return SkillResult(
+                success="error" not in result,
+                data={
+                    "direction": direction,
+                    "focus": focus,
+                    "perception": result,
+                    "summary": summary,
+                },
+                cost_time=elapsed,
+                logs=[f"perceive({direction}): {summary}"],
+            )
+        
+        # fallback: 没有被动感知引擎，直接走 adapter
+        adapter = _get_adapter()
+        if not adapter or not hasattr(adapter, 'get_image_base64'):
+            return SkillResult(
+                success=False,
+                error_msg="adapter 不可用",
+                cost_time=round(time.time() - start, 2),
+            )
+        
+        dir_to_cam = {"front": "cam_front", "left": "cam_left", "right": "cam_right",
+                      "rear": "cam_rear", "down": "cam_down"}
+        cam_name = dir_to_cam.get(direction, "cam_front")
+        
+        try:
+            import base64 as b64mod
+            b64_str = adapter.get_image_base64(camera_name=cam_name)
+            if not b64_str:
+                return SkillResult(success=False, error_msg=f"{direction} 摄像头无图像",
+                                   cost_time=round(time.time() - start, 2))
+            
+            image = b64mod.b64decode(b64_str)
+            analyzer = get_analyzer()
+            if analyzer is None:
+                analyzer = init_analyzer()
+            
+            prompt = f"Analyze this drone camera image ({direction} view). Focus: {focus or 'describe environment'}. Answer in Chinese."
+            result = analyzer.analyze_image(image, system_prompt="You are a drone perception system.", user_prompt=prompt)
+            elapsed = round(time.time() - start, 2)
+            
+            return SkillResult(
+                success=True,
+                data={"direction": direction, "focus": focus, "summary": result},
+                cost_time=elapsed,
+                logs=[f"perceive({direction}): {result[:100]}..."],
+            )
+        except Exception as e:
+            return SkillResult(success=False, error_msg=str(e),
+                               cost_time=round(time.time() - start, 2))
+
+
+# ── 被动感知引擎全局引用 ──
+_global_passive_perception = None
+
+def set_passive_perception(engine):
+    global _global_passive_perception
+    _global_passive_perception = engine
+
+def _get_passive_perception():
+    return _global_passive_perception

@@ -176,12 +176,36 @@ export default function MapView({ socket, worldState, onCommand }) {
         }
       }
 
-      // 无人机 (脉冲蓝点 + 方向)
+      // 无人机图标 (俯视四旋翼)
       const dp = ned2c(drone.n, drone.e, cx, cy, scale)
-      const pulse = 5 + Math.sin(Date.now() / 300) * 2
-      ctx.beginPath(); ctx.fillStyle = 'rgba(0,212,255,0.1)'; ctx.arc(dp.x, dp.y, pulse + 10, 0, Math.PI * 2); ctx.fill()
-      ctx.beginPath(); ctx.fillStyle = 'rgba(0,212,255,0.2)'; ctx.arc(dp.x, dp.y, pulse + 5, 0, Math.PI * 2); ctx.fill()
-      ctx.beginPath(); ctx.fillStyle = '#00d4ff'; ctx.arc(dp.x, dp.y, pulse, 0, Math.PI * 2); ctx.fill()
+      const pulse = 8 + Math.sin(Date.now() / 300) * 3
+      // 脉冲光环
+      ctx.beginPath(); ctx.fillStyle = 'rgba(0,212,255,0.06)'; ctx.arc(dp.x, dp.y, pulse + 12, 0, Math.PI * 2); ctx.fill()
+      ctx.beginPath(); ctx.fillStyle = 'rgba(0,212,255,0.12)'; ctx.arc(dp.x, dp.y, pulse + 4, 0, Math.PI * 2); ctx.fill()
+      // 机体 (俯视四旋翼轮廓)
+      const S = 10  // 图标半尺寸
+      ctx.save()
+      ctx.translate(dp.x, dp.y)
+      // 机臂 (X 形)
+      ctx.strokeStyle = '#00d4ff'; ctx.lineWidth = 2; ctx.lineCap = 'round'
+      ctx.beginPath(); ctx.moveTo(-S, -S); ctx.lineTo(S, S); ctx.stroke()
+      ctx.beginPath(); ctx.moveTo(S, -S); ctx.lineTo(-S, S); ctx.stroke()
+      // 四个旋翼圆
+      const rotorR = S * 0.55
+      const arms = [[-S, -S], [S, -S], [S, S], [-S, S]]
+      arms.forEach(([ax, ay]) => {
+        ctx.beginPath(); ctx.strokeStyle = 'rgba(0,212,255,0.6)'; ctx.lineWidth = 1.5
+        ctx.arc(ax, ay, rotorR, 0, Math.PI * 2); ctx.stroke()
+        ctx.beginPath(); ctx.fillStyle = 'rgba(0,212,255,0.25)'
+        ctx.arc(ax, ay, rotorR, 0, Math.PI * 2); ctx.fill()
+      })
+      // 中心机体
+      ctx.beginPath(); ctx.fillStyle = '#00d4ff'
+      ctx.arc(0, 0, 3, 0, Math.PI * 2); ctx.fill()
+      // 前方指示 (小三角)
+      ctx.fillStyle = '#00d4ff'; ctx.beginPath()
+      ctx.moveTo(0, -S - 4); ctx.lineTo(-3, -S + 1); ctx.lineTo(3, -S + 1); ctx.closePath(); ctx.fill()
+      ctx.restore()
       // 高度标签
       ctx.fillStyle = '#fff'; ctx.font = 'bold 10px monospace'
       ctx.fillText('h=' + Math.abs(drone.d).toFixed(0) + 'm', dp.x + pulse + 6, dp.y + 4)

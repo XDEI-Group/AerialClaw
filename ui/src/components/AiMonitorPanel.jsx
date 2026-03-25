@@ -291,65 +291,124 @@ function SysLogColumn({ logs, aiThinking }) {
   )
 }
 
+/* ── 摄像头方向配置 ──────────────────────────────────────── */
+const CAM_DIRECTIONS = [
+  { key: 'front', label: '▲ FRONT', cockpit: 'front' },
+  { key: 'left',  label: '◀ LEFT',  cockpit: 'left' },
+  { key: 'right', label: '▶ RIGHT', cockpit: 'right' },
+  { key: 'rear',  label: '▼ REAR',  cockpit: 'rear' },
+  { key: 'down',  label: '⊙ DOWN',  cockpit: 'down' },
+]
+
 /* ── 主面板 ──────────────────────────────────────────────── */
 export default function AiMonitorPanel({
   sensorCameras, sensorLidar, aiThinking, aiStream, lastAiPlan, logs, onOpenCockpit,
   socket, worldState, onMapCommand,
 }) {
-  const [mapMode, setMapMode] = useState(false)
+  const [activeCam, setActiveCam] = useState('front')  // 当前主摄像头
+
+  // 缩略图：除当前主画面外的其他摄像头 + LiDAR
+  const thumbCams = CAM_DIRECTIONS.filter(c => c.key !== activeCam)
 
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', gap: 6, overflow: 'hidden' }}>
 
-      {/* 上栏: 态势图 / 传感器 切换 */}
-      <div style={{ display: 'flex', flexDirection: 'column', flexShrink: 0, height: mapMode ? 380 : 220, minHeight: mapMode ? 380 : 220,
-        background: '#0a0e14', borderRadius: 6, border: '1px solid rgba(34,197,94,0.1)', overflow: 'hidden', transition: 'height 0.3s' }}>
-        {/* Tab 切换 */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 0, flexShrink: 0, borderBottom: '1px solid rgba(34,197,94,0.1)' }}>
-          <button onClick={() => setMapMode(false)}
-            style={{ padding: '4px 12px', background: !mapMode ? 'rgba(34,197,94,0.1)' : 'transparent', border: 'none',
-              borderBottom: !mapMode ? '2px solid #22c55e' : '2px solid transparent',
-              color: !mapMode ? '#22c55e' : '#4a5568', fontSize: 10, cursor: 'pointer', fontFamily: 'monospace' }}>
-            📡 传感器
-          </button>
-          <button onClick={() => setMapMode(true)}
-            style={{ padding: '4px 12px', background: mapMode ? 'rgba(0,212,255,0.1)' : 'transparent', border: 'none',
-              borderBottom: mapMode ? '2px solid #00d4ff' : '2px solid transparent',
-              color: mapMode ? '#00d4ff' : '#4a5568', fontSize: 10, cursor: 'pointer', fontFamily: 'monospace' }}>
-            🗺 态势图
-          </button>
+      {/* 上栏: 左=摄像头(主画面+缩略图)  右=态势图  并排 */}
+      <div style={{ display: 'flex', flexShrink: 0, height: 340, minHeight: 280, gap: 6 }}>
+
+        {/* ── 左半: 摄像头主画面 + 左下角缩略图 ── */}
+        <div style={{
+          flex: 1, position: 'relative',
+          background: '#0a0e14', borderRadius: 6, border: '1px solid rgba(34,197,94,0.15)',
+          overflow: 'hidden',
+        }}>
+          {/* 主画面 */}
+          {sensorCameras?.[activeCam]?.image ? (
+            <img src={`data:image/jpeg;base64,${sensorCameras[activeCam].image}`}
+              alt={activeCam}
+              onDoubleClick={() => onOpenCockpit(CAM_DIRECTIONS.find(c => c.key === activeCam)?.cockpit)}
+              style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', cursor: 'pointer' }} />
+          ) : (
+            <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center',
+              color: 'rgba(34,197,94,0.3)', fontSize: 14, fontFamily: 'monospace' }}>NO SIGNAL</div>
+          )}
+
+          {/* 主画面标签 */}
+          <div style={{ position: 'absolute', top: 6, left: 8, padding: '2px 8px', borderRadius: 3,
+            background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)',
+            fontSize: 10, color: '#22c55e', fontFamily: 'monospace', letterSpacing: 1.5,
+            textShadow: '0 0 6px rgba(34,197,94,0.5)' }}>
+            {CAM_DIRECTIONS.find(c => c.key === activeCam)?.label}
+          </div>
+
+          {/* 扫描线效果 */}
+          <div style={{ position: 'absolute', inset: 0,
+            background: 'repeating-linear-gradient(0deg, transparent, transparent 3px, rgba(0,0,0,0.02) 3px, rgba(0,0,0,0.02) 6px)',
+            pointerEvents: 'none' }} />
+
+          {/* 左下角缩略图栏: 其他摄像头 + LiDAR */}
+          <div style={{ position: 'absolute', bottom: 6, left: 6, display: 'flex', gap: 3, zIndex: 10 }}>
+            {thumbCams.map(cam => (
+              <div key={cam.key}
+                onClick={() => setActiveCam(cam.key)}
+                style={{
+                  width: 64, height: 44, borderRadius: 4, overflow: 'hidden', cursor: 'pointer',
+                  border: '1px solid rgba(34,197,94,0.3)', position: 'relative',
+                  background: '#0a0e14', opacity: 0.85,
+                  transition: 'opacity 0.15s, border-color 0.15s',
+                }}
+                onMouseEnter={e => { e.currentTarget.style.opacity = '1'; e.currentTarget.style.borderColor = '#22c55e' }}
+                onMouseLeave={e => { e.currentTarget.style.opacity = '0.85'; e.currentTarget.style.borderColor = 'rgba(34,197,94,0.3)' }}
+              >
+                {sensorCameras?.[cam.key]?.image ? (
+                  <img src={`data:image/jpeg;base64,${sensorCameras[cam.key].image}`} alt={cam.label}
+                    style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                ) : (
+                  <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    color: 'rgba(34,197,94,0.25)', fontSize: 7, fontFamily: 'monospace' }}>OFFLINE</div>
+                )}
+                <span style={{ position: 'absolute', bottom: 1, left: 3, fontSize: 7, color: '#22c55e',
+                  fontFamily: 'monospace', textShadow: '0 0 3px rgba(0,0,0,0.8)', letterSpacing: 0.5 }}>
+                  {cam.label}
+                </span>
+              </div>
+            ))}
+            {/* LiDAR 缩略图 */}
+            <div style={{
+              width: 64, height: 44, borderRadius: 4, overflow: 'hidden',
+              border: '1px solid rgba(34,197,94,0.3)', position: 'relative',
+              background: '#0a0e14', opacity: 0.85,
+            }}>
+              <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <LidarRadar lidarData={sensorLidar} size={40} />
+              </div>
+              <span style={{ position: 'absolute', bottom: 1, left: 3, fontSize: 7, color: '#22c55e',
+                fontFamily: 'monospace', textShadow: '0 0 3px rgba(0,0,0,0.8)' }}>◎ LIDAR</span>
+            </div>
+          </div>
+
+          {/* 右下角双击提示 */}
+          <div style={{ position: 'absolute', bottom: 6, right: 8, fontSize: 8, color: 'rgba(34,197,94,0.3)',
+            fontFamily: 'monospace', zIndex: 10 }}>
+            double-click → cockpit
+          </div>
         </div>
 
-        {!mapMode ? (
-          <div style={{ flex: 1, display: 'flex', gap: 6, padding: 6, overflow: 'hidden' }}>
-            <div style={{ flex: 1, display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gridTemplateRows: '1fr 1fr', gap: 3, overflow: 'hidden' }}>
-              <div onClick={() => onOpenCockpit('front')} style={{ cursor: 'pointer' }}><CameraView src={sensorCameras?.front?.image} label="▲ 前" /></div>
-              <div onClick={() => onOpenCockpit('down')} style={{ cursor: 'pointer' }}><CameraView src={sensorCameras?.down?.image} label="⊙ 下" /></div>
-              <div onClick={() => onOpenCockpit('right')} style={{ cursor: 'pointer' }}><CameraView src={sensorCameras?.right?.image} label="▶ 右" /></div>
-              <div onClick={() => onOpenCockpit('left')} style={{ cursor: 'pointer' }}><CameraView src={sensorCameras?.left?.image} label="◀ 左" /></div>
-              <div onClick={() => onOpenCockpit('rear')} style={{ cursor: 'pointer' }}><CameraView src={sensorCameras?.rear?.image} label="▼ 后" /></div>
-            </div>
-            <div style={{ flexShrink: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
-              <LidarRadar lidarData={sensorLidar} size={140} />
-              <span style={{ fontSize: 8, color: 'rgba(34,197,94,0.4)', fontFamily: 'monospace', letterSpacing: 2 }}>LIDAR 3D</span>
-            </div>
+        {/* ── 右半: 态势图 ── */}
+        <div style={{
+          flex: 1, position: 'relative',
+          background: '#0a0e14', borderRadius: 6, border: '1px solid rgba(0,212,255,0.15)',
+          overflow: 'hidden',
+        }}>
+          <div style={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 6,
+            display: 'flex', alignItems: 'center', gap: 6, padding: '3px 8px',
+            background: 'rgba(10,14,20,0.8)', borderBottom: '1px solid rgba(0,212,255,0.1)' }}>
+            <span style={{ fontSize: 9, color: 'rgba(0,212,255,0.5)', fontFamily: 'monospace', letterSpacing: 1.5 }}>🗺 SITUATION MAP</span>
           </div>
-        ) : (
-          <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
+          <div style={{ position: 'absolute', top: 22, left: 0, right: 0, bottom: 0 }}>
             <MapView socket={socket} worldState={worldState} onCommand={onMapCommand} />
-            {/* 画中画摄像头 */}
-            <div style={{ position: 'absolute', bottom: 8, left: 8, display: 'flex', gap: 4, zIndex: 5 }}>
-              <div style={{ width: 80, height: 60, borderRadius: 4, overflow: 'hidden', border: '1px solid rgba(34,197,94,0.3)',
-                cursor: 'pointer', opacity: 0.85 }} onClick={() => onOpenCockpit('front')}>
-                <CameraView src={sensorCameras?.front?.image} label="前" />
-              </div>
-              <div style={{ width: 80, height: 60, borderRadius: 4, overflow: 'hidden', border: '1px solid rgba(34,197,94,0.3)',
-                cursor: 'pointer', opacity: 0.85 }} onClick={() => onOpenCockpit('down')}>
-                <CameraView src={sensorCameras?.down?.image} label="下" />
-              </div>
-            </div>
           </div>
-        )}
+        </div>
       </div>
 
       {/* 下栏: 三栏活动面板 */}

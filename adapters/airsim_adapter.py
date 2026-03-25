@@ -37,7 +37,13 @@ class AirSimAdapter(SimAdapter):
         self._client = None
         self._connected = False
         self._spawn_z: float = 0.0
+        self._spawn_x: float = 0.0  # spawn 点 x，用于坐标归零
+        self._spawn_y: float = 0.0  # spawn 点 y，用于坐标归零
         self._home_position: Optional[Position] = None
+        self.is_flying: bool = False  # 飞行中标记，摄像头流可据此降频
+        self._stop_requested: bool = False  # 外部打断标志
+        self._last_obstacle_info: dict = {}  # 最近一次避障信息
+        self._landed: bool = False  # 已着陆标记（land 成功后置 True，takeoff 后置 False）
         self._hold_thread: Optional[threading.Thread] = None
         self._hold_running = False
         self._hold_lock = threading.Lock()
@@ -114,10 +120,10 @@ class AirSimAdapter(SimAdapter):
         except Exception:
             return False
 
-    def _fly_smooth(self, tx, ty, tz, speed=3.0):
+    def _fly_smooth(self, tx, ty, tz, speed=8.0):
         """
-        安全飞行：三段式（升高→水平→下降）。
-        巡航高度动态计算：50m 默认，靠近高楼区域自动升高。
+        安全飞行：保持当前高度水平飞到目标上方，再调整高度。
+        返回: 'ok' / 'obstacle' / 'stopped'
         """
         import math
 
@@ -126,74 +132,153 @@ class AirSimAdapter(SimAdapter):
         dist = math.sqrt(dx*dx + dy*dy + dz*dz)
         if dist < 0.1:
             self._hold_x, self._hold_y, self._hold_z = tx, ty, tz
-            return
+            return 'ok'
 
-        # 动态巡航高度：根据路径经过的区域决定
-        # 默认 50m（高于大部分低层建筑 14-24m）
-        cruise_alt = 50.0
-        # 如果起点或终点在高层商业区附近(y>80)，升高到 170m
-        if max(abs(sy), abs(ty)) > 80 and (sy > 60 or ty > 60):
-            cruise_alt = 170.0
-        # 如果起点或终点在摩天楼群附近(y<-100)，升高到 500m
-        if min(sy, ty) < -100 or min(sy, ty if ty < -80 else 0, sy if sy < -80 else 0) < -80:
-            cruise_alt = 500.0
-        
-        CRUISE_Z = self._spawn_z - cruise_alt
-        
         h_dist = math.sqrt(dx*dx + dy*dy)
         
         if h_dist < 3.0:
-            self._fly_smooth_raw(tx, ty, tz, speed)
+            return self._fly_smooth_raw(tx, ty, tz, speed)
         else:
-            logger.info(f"🛫 三段飞行: 升到{cruise_alt:.0f}m → 水平{h_dist:.0f}m → 降到目标")
-            self._fly_smooth_raw(sx, sy, CRUISE_Z, speed)       # 升高
-            self._fly_smooth_raw(tx, ty, CRUISE_Z, speed)       # 水平飞
-            self._fly_smooth_raw(tx, ty, tz, speed)             # 下降
+            fly_z = min(sz, tz)
+            logger.info(f"🛫 飞行: 水平{h_dist:.0f}m, 高度{(self._spawn_z - fly_z):.0f}m")
+            if abs(sz - fly_z) > 1.0:
+                result = self._fly_smooth_raw(sx, sy, fly_z, speed)
+                if result != 'ok':
+                    return result
+            result = self._fly_smooth_raw(tx, ty, fly_z, speed)
+            if result != 'ok':
+                return result
+            if abs(tz - fly_z) > 1.0:
+                return self._fly_smooth_raw(tx, ty, tz, speed)
+            return 'ok'
 
-    def _fly_smooth_raw(self, tx, ty, tz, speed=3.0):
-        """底层插值飞行（带碰撞中断）。朝向跟随运动方向。"""
+    def _fly_smooth_raw(self, tx, ty, tz, speed=8.0):
+        """底层插值飞行 + 实时 LiDAR/深度避障 + 外部打断支持。
+        
+        飞行中每 15 步（~500ms）检查前方深度图：
+        - 前方 < SAFE_DIST 米 → 立即停下，返回 'obstacle'
+        - 外部 stop_event 置位 → 立即停下，返回 'stopped'
+        - 正常到达 → 返回 'ok'
+        """
         import math
+        SAFE_DIST = 8.0      # 前方安全距离（米），低于此距离停下
+        CHECK_INTERVAL = 15  # 每 15 步检查一次（~500ms）
+        
+        self.is_flying = True
         sx, sy, sz = self._hold_x, self._hold_y, self._hold_z
         dx, dy, dz = tx - sx, ty - sy, tz - sz
         dist = math.sqrt(dx*dx + dy*dy + dz*dz)
         if dist < 0.1:
             self._hold_x, self._hold_y, self._hold_z = tx, ty, tz
-            return
+            self.is_flying = False
+            return 'ok'
+        
         # 朝向对准运动方向
         if abs(dx) > 0.1 or abs(dy) > 0.1:
             self._fly_yaw = math.atan2(dy, dx)
+        
         duration = dist / speed
-        step_interval = 0.05  # 50ms per step
+        step_interval = 0.033
         steps = max(1, int(duration / step_interval))
-        collision_count = 0
+        
         for i in range(1, steps + 1):
+            # ── 外部打断检查 ──
+            if self._stop_requested:
+                logger.warning("🛑 外部打断！停止飞行")
+                self.is_flying = False
+                self._stop_requested = False
+                return 'stopped'
+            
             t = i / steps
-            self._hold_x = sx + dx * t
-            self._hold_y = sy + dy * t
-            self._hold_z = sz + dz * t
+            nx = sx + dx * t
+            ny = sy + dy * t
+            nz = sz + dz * t
+            self._hold_x, self._hold_y, self._hold_z = nx, ny, nz
+            self._do_set_pose(nx, ny, nz)
             time.sleep(step_interval)
-            # 每 10 步检测一次碰撞（节省 RPC 开销）
-            if i % 10 == 0 and self._check_collision():
-                collision_count += 1
-                if collision_count >= 2:
-                    # 连续碰撞，后退一步并升高
-                    logger.warning(f"💥 碰撞检测! 后退并升高避障")
-                    self._hold_x = sx + dx * ((i-10) / steps)
-                    self._hold_y = sy + dy * ((i-10) / steps)
-                    self._hold_z -= 3.0  # 升高3m（z减小=向上）
-                    time.sleep(0.5)
-                    # 从新位置重新飞到目标
-                    self._fly_smooth_raw(tx, ty, tz, speed)
-                    return
+            
+            # ── 深度图避障（每 CHECK_INTERVAL 步） ──
+            if i % CHECK_INTERVAL == 0:
+                v_move = abs(nz - sz) / max(dist, 0.1)  # 垂直分量占比
+                going_down = (nz > sz)  # z增大=向下
+                going_up = (nz < sz)    # z减小=向上
+                
+                # 向上飞时不检查避障（向上是逃脱障碍的方式）
+                if v_move > 0.7 and going_up:
+                    pass  # 跳过避障检查
+                elif v_move > 0.7 and going_down:
+                    # 向下飞 → 检查下方
+                    front_dist = self._check_depth('cam_down')
+                    if front_dist is not None and front_dist < SAFE_DIST:
+                        logger.warning(f"⚠️ 下方障碍物 {front_dist:.1f}m！自动悬停")
+                        self.is_flying = False
+                        self._last_obstacle_info = {'front_dist': front_dist, 'direction': '下方', 'position': {'x': nx, 'y': ny, 'z': nz}, 'target': {'x': tx, 'y': ty, 'z': tz}}
+                        return 'obstacle'
+                else:
+                    # 水平飞 → 检查前方
+                    front_dist = self._check_depth('cam_front')
+                    if front_dist is not None and front_dist < SAFE_DIST:
+                        logger.warning(f"⚠️ 前方障碍物 {front_dist:.1f}m！自动悬停")
+                        self.is_flying = False
+                        self._last_obstacle_info = {'front_dist': front_dist, 'direction': '前方', 'position': {'x': nx, 'y': ny, 'z': nz}, 'target': {'x': tx, 'y': ty, 'z': tz}}
+                        return 'obstacle'
+                        'front_dist': front_dist,
+                        'direction': cam_dir,
+                        'position': {'x': nx, 'y': ny, 'z': nz},
+                        'target': {'x': tx, 'y': ty, 'z': tz},
+                    }
+                    return 'obstacle'
+        
         self._hold_x, self._hold_y, self._hold_z = tx, ty, tz
+        self.is_flying = False
+        return 'ok'
+    
+    def _check_depth(self, camera_name: str = 'cam_front') -> float:
+        """用深度摄像头检查指定方向最近障碍距离（米）。返回 None 表示检查失败。"""
+        try:
+            resp = self._client.sim_get_images([{
+                'camera_name': camera_name,
+                'image_type': 2,  # DepthPerspective
+                'pixels_as_float': True,
+                'compress': False,
+            }], vehicle_name=self._vehicle_name)
+            if not resp:
+                return None
+            r = resp[0]
+            h, w = r.get('height', 0), r.get('width', 0)
+            data = r.get('image_data_float') or []
+            if not data or h == 0 or w == 0:
+                return None
+            
+            import struct
+            if isinstance(data, bytes):
+                data = list(struct.unpack(f'{len(data)//4}f', data))
+            
+            # 取中心区域（中间 1/3 x 中间 1/3）的最小深度
+            h3, w3 = h // 3, w // 3
+            min_depth = 999.0
+            for row in range(h3, h3 * 2):
+                row_start = row * w + w3
+                row_end = row_start + w3
+                if row_end <= len(data):
+                    for d in data[row_start:row_end]:
+                        if 0.1 < d < min_depth:
+                            min_depth = d
+            return min_depth if min_depth < 999.0 else None
+        except Exception as e:
+            return None
+    
+    def request_stop(self):
+        """外部请求停止飞行（用户打断/安全包线）。"""
+        self._stop_requested = True
 
     def _hold_loop(self):
-        """后台线程：每100ms重设位置。simSetVehiclePose 覆盖物理引擎。"""
+        """后台线程：每33ms重设位置(~30fps)。simSetVehiclePose 覆盖物理引擎。"""
         client = self._hold_client or self._client
         try:
             while self._hold_running:
                 self._do_set_pose(self._hold_x, self._hold_y, self._hold_z)
-                import time as _t; _t.sleep(0.1)
+                import time as _t; _t.sleep(0.033)
         except Exception as e:
             logger.warning(f"Hold thread error: {e}")
         finally:
@@ -229,20 +314,21 @@ class AirSimAdapter(SimAdapter):
             # 传送到地面原点，确保 spawn_z 是真实地面值
             import time as _t
             try:
-                # (0, 250) 东方空旷区，远离建筑，AirSim 视角不会卡住
+                # (15, -5) settings.json 原始 spawn 点，直接传送到 100m 高空避开地面障碍
                 ground_pose = {
-                    "position": {"x_val": 0.0, "y_val": 250.0, "z_val": -3.0},
+                    "position": {"x_val": 15.0, "y_val": -5.0, "z_val": -100.0},
                     "orientation": {"w_val": 1.0, "x_val": 0.0, "y_val": 0.0, "z_val": 0.0},
                 }
                 self._client._rpc.call("simSetVehiclePose", ground_pose, True, self._vehicle_name)
-                _t.sleep(1.0)
+                _t.sleep(2.0)  # 等2秒让物理引擎落地稳定
             except Exception as _tp_err:
                 logger.warning(f"Ground teleport failed: {_tp_err}")
 
-            # 读稳定后的 z 作为 spawn_z（应约为 2.25~3.3）
-            _, _, z = self._xyz()
-            self._spawn_z = z
-            logger.info(f"Ground calibrated: spawn_z={self._spawn_z:.3f}")
+            # 地面 z≈2.0（实测），直接硬编码，不等物理引擎落地
+            self._spawn_z = 2.0
+            self._spawn_x = 15.0  # spawn 传送目标 x (settings.json 原始 spawn)
+            self._spawn_y = -5.0  # spawn 传送目标 y
+            logger.info(f"Ground calibrated: spawn=({self._spawn_x},{self._spawn_y},{self._spawn_z}), start at 100m altitude")
             self._home_position = Position(north=0.0, east=0.0, down=0.0)
             # 第二个 RPC 连接，专门给 hold 线程用（避免和摄像头/LiDAR 抢 socket）
             try:
@@ -292,11 +378,17 @@ class AirSimAdapter(SimAdapter):
         try:
             x, y, z = self._xyz()
             altitude = z - self._spawn_z
-            in_air = altitude < -_AIR_THRESHOLD  # z减小=向上，空中altitude为负
+            in_air = altitude < -_AIR_THRESHOLD
+            # 已着陆标记覆盖实时计算
+            if self._landed:
+                in_air = False
+            # 坐标归零：上层看到的坐标以起飞点为原点
+            rel_n = x - self._spawn_x
+            rel_e = y - self._spawn_y
             return VehicleState(
                 armed=True,
                 in_air=in_air,
-                position_ned=Position(north=x, east=y, down=altitude),  # altitude负=向上 = NED down负=向上，一致
+                position_ned=Position(north=rel_n, east=rel_e, down=altitude),
                 battery_percent=100.0,
                 velocity=[0.0, 0.0, 0.0],
             )
@@ -314,12 +406,14 @@ class AirSimAdapter(SimAdapter):
     def get_battery(self) -> tuple:
         return (12.6, 100.0)
 
-    def get_image_base64(self) -> str:
-        """获取前向摄像头图像（base64 JPEG）。"""
+    def get_image_base64(self, camera_name: str = 'cam_front') -> str:
+        """获取指定摄像头图像（base64 JPEG）。用摄像头专用连接避免和 hold 冲突。"""
         try:
             import base64, cv2, numpy as np
-            responses = self._client.sim_get_images([{
-                'camera_name': 'cam_front',
+            # 优先用摄像头专用 RPC，避免和 hold 线程抢主连接
+            client = getattr(self, '_cam_client', None) or self._client
+            responses = client.sim_get_images([{
+                'camera_name': camera_name,
                 'image_type': 0,
                 'pixels_as_float': False,
                 'compress': False,
@@ -342,8 +436,10 @@ class AirSimAdapter(SimAdapter):
         return self._connected
 
     def is_in_air(self) -> bool:
+        if self._landed:
+            return False
         _, _, z = self._xyz()
-        return (z - self._spawn_z) < -_AIR_THRESHOLD  # z减小=向上
+        return (z - self._spawn_z) < -_AIR_THRESHOLD
 
     def arm(self) -> ActionResult:
         try:
@@ -360,53 +456,113 @@ class AirSimAdapter(SimAdapter):
             return ActionResult(success=False, message=str(e))
 
     def takeoff(self, altitude: float = 5.0) -> ActionResult:
+        """从当前高度往上飞 altitude 米（相对上升）。"""
         if not self._connected:
             return ActionResult(success=False, message="Not connected")
         try:
             x, y, z0 = self._xyz()
-            target_z = self._spawn_z - altitude  # z减小=向上
-            logger.info(f"Takeoff to altitude={altitude}m, target_z={target_z:.3f}")
-            self._set_pose(x, y, self._hold_z if self._hold_running else z0)  # 先启动 hold
-            self._fly_smooth(x, y, target_z, speed=2.0)  # 平滑上升
+            current_alt = -(z0 - self._spawn_z)
+            # 相对上升：从当前z往上飞altitude米
+            target_z = z0 - altitude  # z减小=向上
+            logger.info(f"Takeoff: current={current_alt:.1f}m, +{altitude}m -> target_z={target_z:.3f}")
+            self._landed = False  # 起飞，清除着陆标记
+            if not self._hold_running:
+                self._set_pose(x, y, z0)
+            result = self._fly_smooth(x, y, target_z, speed=5.0)
             _, _, actual_z = self._xyz()
-            actual_alt = actual_z - self._spawn_z
-            if actual_alt > -0.5:  # z减小=向上，起飞后actual_alt为负
-                return ActionResult(success=False, message=f"Takeoff failed: altitude={actual_alt:.2f}m")
-            logger.info(f"Takeoff confirmed: altitude={actual_alt:.2f}m")
-            return ActionResult(success=True, message=f"Takeoff OK: altitude={actual_alt:.1f}m")
+            actual_alt = -(actual_z - self._spawn_z)
+            logger.info(f"Takeoff confirmed: altitude={actual_alt:.1f}m")
+            return ActionResult(success=True, message=f"Takeoff OK: now at {actual_alt:.1f}m altitude")
         except Exception as e:
             return ActionResult(success=False, message=str(e))
 
     def land(self) -> ActionResult:
+        """安全降落：快速下降到接近地面，然后慢降着陆。"""
         if not self._connected:
             return ActionResult(success=False, message="Not connected")
         try:
-            x, y, _ = self._xyz()
-            logger.info(f"Land: returning to spawn_z={self._spawn_z:.3f}")
-            # 平滑下降到 spawn_z
-            self._fly_smooth(x, y, self._spawn_z, speed=2.0)
-            self._stop_hold()  # 到地面后停止 hold
-            time.sleep(0.3)
-            _, _, actual_z = self._xyz()
-            altitude = actual_z - self._spawn_z
-            logger.info(f"Land confirmed: altitude={altitude:.3f}m")
-            return ActionResult(success=True, message=f"Landed: altitude={altitude:.3f}m")
+            FINAL_DIST = 1.5     # 下方<1.5m时认为已着陆，停止
+            MAX_STEPS = 300
+            
+            x, y, z = self._xyz()
+            current_alt = -(z - self._spawn_z)
+            logger.info(f"Land: starting from altitude={current_alt:.1f}m")
+            
+            if not self._hold_running:
+                self._set_pose(x, y, z)
+            
+            for step in range(MAX_STEPS):
+                if self._stop_requested:
+                    self._stop_requested = False
+                    _, _, fz = self._xyz()
+                    fa = -(fz - self._spawn_z)
+                    return ActionResult(success=True, message=f"Landing aborted at {fa:.1f}m")
+                
+                x, y, z = self._xyz()
+                current_alt = -(z - self._spawn_z)
+                
+                # 已经很低，停止
+                if current_alt < 2.0:
+                    logger.info(f"Land: altitude={current_alt:.1f}m, near ground")
+                    break
+                
+                # 检查下方深度
+                below_dist = self._check_depth('cam_down')
+                
+                if below_dist is not None and below_dist < FINAL_DIST:
+                    # 非常接近地面/屋顶，停止
+                    logger.info(f"Land: 下方{below_dist:.1f}m，已着陆")
+                    break
+                elif below_dist is not None and below_dist < 8.0:
+                    # 接近地面，慢降 1m
+                    target_z = z + 1.0
+                    self._fly_smooth_raw(x, y, target_z, speed=1.5)
+                else:
+                    # 高空，快速降 5m
+                    target_z = z + 5.0
+                    self._fly_smooth_raw(x, y, target_z, speed=5.0)
+            
+            _, _, final_z = self._xyz()
+            final_alt = -(final_z - self._spawn_z)
+            self._landed = True  # 标记已着陆
+            logger.info(f"Land confirmed: altitude={final_alt:.1f}m, landed=True")
+            return ActionResult(success=True, message=f"Landed at {final_alt:.1f}m")
+            logger.info(f"Land confirmed: altitude={final_alt:.1f}m")
+            return ActionResult(success=True, message=f"Landed at altitude={final_alt:.1f}m")
         except Exception as e:
             return ActionResult(success=False, message=str(e))
 
     def fly_to_ned(self, north: float, east: float, down: float,
-                   speed: float = 2.0) -> ActionResult:
-        """NED down 为负=向上，airsim_z = spawn_z - down"""
+                   speed: float = 8.0) -> ActionResult:
+        """上层传入归零坐标(以起飞点为原点)，转换为 AirSim 绝对坐标飞行"""
         if not self._connected:
             return ActionResult(success=False, message="Not connected")
         try:
-            target_z = self._spawn_z + down  # NED down负=向上 → z减小=向上，直接相加
-            logger.info(f"fly_to_ned: N={north:.2f} E={east:.2f} down={down:.2f} -> airsim_z={target_z:.3f}")
+            # 归零坐标 → AirSim 绝对坐标
+            abs_x = north + self._spawn_x
+            abs_y = east + self._spawn_y
+            # 安全高度限制：城市环境最低 50m（down ≤ -50）
+            MIN_ALT = 50.0
+            if down > -MIN_ALT:
+                logger.warning(f"⚠️ 目标高度 {-down:.0f}m 低于安全高度 {MIN_ALT:.0f}m，自动提升")
+                down = -MIN_ALT
+            target_z = self._spawn_z + down
+            logger.info(f"fly_to_ned: rel({north:.1f},{east:.1f},{down:.1f}) -> abs({abs_x:.1f},{abs_y:.1f},{target_z:.3f})")
             if not self._hold_running:
-                self._set_pose(self._hold_x, self._hold_y, self._hold_z)  # 确保 hold 在跑
-            self._fly_smooth(north, east, target_z, speed=speed)
+                self._set_pose(self._hold_x, self._hold_y, self._hold_z)
+            result = self._fly_smooth(abs_x, abs_y, target_z, speed=speed)
+            if result == 'obstacle':
+                info = self._last_obstacle_info
+                direction = info.get('direction', '前方')
+                dist_val = info.get('front_dist', 0)
+                return ActionResult(
+                    success=False,
+                    message=f"⚠️ {direction}{dist_val:.1f}m处检测到障碍物，已自动悬停。请重新规划航线或改变方向。"
+                )
+            if result == 'stopped':
+                return ActionResult(success=False, message="飞行被外部打断，已悬停。")
             ax, ay, az = self._xyz()
-            err = ((ax-north)**2 + (ay-east)**2 + (az-target_z)**2)**0.5
+            err = ((ax-abs_x)**2 + (ay-abs_y)**2 + (az-target_z)**2)**0.5
             return ActionResult(success=True, message=f"fly_to_ned OK: err={err:.3f}m")
         except Exception as e:
             return ActionResult(success=False, message=str(e))
@@ -456,14 +612,21 @@ class AirSimAdapter(SimAdapter):
         return ActionResult(success=True, message='velocity stopped')
 
     def return_to_launch(self) -> ActionResult:
+        """飞回起飞点上方，然后安全降落（带下方深度探测）。"""
         if not self._connected:
             return ActionResult(success=False, message="Not connected")
         try:
-            # 先飞到 home 上方 3m
             if not self._hold_running:
                 x, y, z = self._xyz()
-                self._set_pose(x, y, z)  # 启动 hold
-            self._fly_smooth(0.0, 0.0, self._spawn_z - 3.0, speed=3.0)
+                self._set_pose(x, y, z)
+            # 先飞到 spawn 点上方（保持当前高度或至少50m）
+            x, y, z = self._xyz()
+            safe_z = min(z, self._spawn_z - 50.0)  # 至少50m高度
+            logger.info(f"RTL: flying to spawn ({self._spawn_x},{self._spawn_y}) at z={safe_z:.1f}")
+            result = self._fly_smooth(self._spawn_x, self._spawn_y, safe_z, speed=8.0)
+            if result == 'obstacle':
+                return ActionResult(success=False, message="RTL: 返航途中遇到障碍物，已悬停")
+            # 到了 spawn 上方，安全降落
             r = self.land()
             return ActionResult(success=r.success, message=f"RTL: {r.message}")
         except Exception as e:

@@ -124,10 +124,10 @@ def _build_robot_registry(robot_id: str, robot_type: str):
     from skills.registry import SkillRegistry
     from skills.motor_skills import (
         Takeoff, Land, FlyTo, Hover, GetPosition, GetBattery, ReturnToLaunch, ChangeAltitude,
-        FlyRelative, LookAround, MarkLocation, GetMarks,
+        FlyRelative, LookAround, MarkLocation, GetMarks, OrbitInspect,
     )
     from skills.perception_skills import (
-        DetectObject, RecognizeSpeech, FusePerception, ScanArea, GetSensorData, Observe,
+        DetectObject, RecognizeSpeech, FusePerception, ScanArea, GetSensorData, Observe, Perceive,
     )
     from skills.cognitive_skills import (
         RunPython, HttpRequest, ReadFile, WriteFile,
@@ -138,9 +138,9 @@ def _build_robot_registry(robot_id: str, robot_type: str):
     ALL_SKILL_FACTORIES = [
         Takeoff, Land, FlyTo, FlyRelative, Hover, ChangeAltitude,
         GetPosition, GetBattery, ReturnToLaunch,
-        LookAround, MarkLocation, GetMarks,
+        LookAround, MarkLocation, GetMarks, OrbitInspect,
         # 软技能不再注册 Python 类，改为文档驱动 (skills/soft_docs/*.md)
-        DetectObject, RecognizeSpeech, FusePerception, ScanArea, GetSensorData, Observe,
+        DetectObject, RecognizeSpeech, FusePerception, ScanArea, GetSensorData, Observe, Perceive,
         # 认知技能（信息层）
         RunPython, HttpRequest, ReadFile, WriteFile,
         # 通信技能（主动交互）
@@ -289,6 +289,8 @@ def _try_connect_adapter():
             # AirSim 模式下启动摄像头流推送
             if sim_adapter == "airsim" and ok:
                 _start_airsim_camera_stream()
+                # 启动被动感知引擎
+                _start_passive_perception()
 
         except Exception as e:
             state.push_log("warn", f"Adapter unavailable: {e}, running in mock mode")
@@ -358,6 +360,34 @@ def _start_telemetry_sync():
     state.push_log("info", "遥测同步线程已启动（1Hz 刷新位置/电量/状态）")
 
 
+def _start_passive_perception():
+    """启动被动感知引擎：定期 VLM 分析摄像头画面，更新 WorldModel。"""
+    try:
+        from perception.passive_perception import PassivePerception
+        from perception.vlm_analyzer import get_analyzer, init_analyzer
+        from skills.perception_skills import set_passive_perception
+        from adapters.adapter_manager import get_adapter as _get_adapter_fn
+
+        analyzer = get_analyzer()
+        if analyzer is None:
+            analyzer = init_analyzer()
+
+        engine = PassivePerception(
+            adapter_getter=_get_adapter_fn,
+            world_model=state.world_model,
+            vlm_analyzer=analyzer,
+            socketio=socketio,
+            interval_seconds=8.0,  # 每 8 秒分析一次（避免 VLM API 过载）
+        )
+        engine.start()
+        set_passive_perception(engine)
+        state.push_log("info", "👁️ 被动感知引擎已启动 (8s/次)")
+        logger.info("被动感知引擎已启动")
+    except Exception as e:
+        logger.warning(f"被动感知引擎启动失败: {e}")
+        state.push_log("warn", f"⚠️ 被动感知引擎未启动: {e}")
+
+
 def _start_airsim_camera_stream():
     """AirSim 模式下的摄像头流推送线程。
     通过 AirSim RPC 获取多摄像头图像，emit 到前端 WebSocket。
@@ -378,9 +408,44 @@ def _start_airsim_camera_stream():
         from adapters.adapter_manager import get_adapter
         import cv2
         import numpy as np
+        from concurrent.futures import ThreadPoolExecutor, as_completed
 
-        logger.info("AirSim 摄像头流推送线程启动")
+        logger.info("AirSim 摄像头流推送线程启动 (并行RPC + 智能降频)")
         fail_count = 0
+        frame_counter = 0  # 用于非活跃摄像头降频
+
+        def _fetch_one_camera(rpc_client, cam_id, vehicle):
+            """单个摄像头的RPC拉取+编码，供线程池并行调用"""
+            try:
+                responses = rpc_client.sim_get_images([{
+                    "camera_name": cam_id,
+                    "image_type": 0,
+                    "pixels_as_float": False,
+                    "compress": False,
+                }], vehicle_name=vehicle)
+                if responses:
+                    r = responses[0]
+                    h = r.get("height", 0)
+                    w = r.get("width", 0)
+                    data = r.get("image_data_uint8") or r.get("image_data", b"")
+                    if isinstance(data, str):
+                        data = b64mod.b64decode(data)
+                    if h > 0 and w > 0 and data and len(data) >= h * w * 3:
+                        img = np.frombuffer(data, dtype=np.uint8).reshape(h, w, 3)
+                        _, buf = cv2.imencode(".jpg", img, [cv2.IMWRITE_JPEG_QUALITY, 75])
+                        return {
+                            "image": b64mod.b64encode(buf.tobytes()).decode("ascii"),
+                            "width": w,
+                            "height": h,
+                            "fps": 10.0,
+                        }
+            except Exception:
+                pass
+            return None
+
+        # 缓存非活跃摄像头上一帧，降频时复用
+        _cached_frames = {}
+        _cam_rpc = None  # 摄像头专用 RPC 连接（避免和 hold 线程抢）
 
         while state.initialized:
             try:
@@ -389,41 +454,60 @@ def _start_airsim_camera_stream():
                     time.sleep(1)
                     continue
 
-                rpc_client = getattr(adapter, '_client', None)
+                # 首次: 建立摄像头专用 RPC 连接
+                if _cam_rpc is None:
+                    try:
+                        from adapters.airsim_rpc import AirSimDirectClient
+                        _ip = getattr(adapter, '_client', None)
+                        _cam_rpc = AirSimDirectClient("127.0.0.1", 41451, timeout=5)
+                        _cam_rpc.connect()
+                        logger.info("摄像头专用 RPC 连接建立")
+                    except Exception as ce:
+                        logger.warning(f"摄像头 RPC 连接失败，用主连接: {ce}")
+                        _cam_rpc = getattr(adapter, '_client', None)
+
+                rpc_client = _cam_rpc or getattr(adapter, '_client', None)
                 if not rpc_client:
                     time.sleep(1)
                     continue
 
+                frame_counter += 1
                 cameras_payload = {}
                 vehicle = getattr(adapter, '_vehicle_name', '')
 
-                for cam_id, direction in AIRSIM_CAMERAS.items():
-                    try:
-                        responses = rpc_client.sim_get_images([{
-                            "camera_name": cam_id,
-                            "image_type": 0,
-                            "pixels_as_float": False,
-                            "compress": False,
-                        }], vehicle_name=vehicle)
+                # 飞行中: 只拉前方且每3帧拉一次; 悬停: front每帧, 其余每10帧轮换
+                flying = getattr(adapter, 'is_flying', False)
 
-                        if responses:
-                            r = responses[0]
-                            h = r.get("height", 0)
-                            w = r.get("width", 0)
-                            data = r.get("image_data_uint8") or r.get("image_data", b"")
-                            if isinstance(data, str):
-                                data = b64mod.b64decode(data)
-                            if h > 0 and w > 0 and data and len(data) >= h * w * 3:
-                                img = np.frombuffer(data, dtype=np.uint8).reshape(h, w, 3)
-                                _, buf = cv2.imencode(".jpg", img, [cv2.IMWRITE_JPEG_QUALITY, 40])
-                                cameras_payload[direction] = {
-                                    "image": b64mod.b64encode(buf.tobytes()).decode("ascii"),
-                                    "width": w,
-                                    "height": h,
-                                    "fps": 5.0,
-                                }
-                    except Exception:
-                        pass  # 个别摄像头失败不影响其他
+                active_cams = {}
+                if flying:
+                    # 飞行时大幅降频，把 RPC 带宽让给 _do_set_pose
+                    if frame_counter % 3 == 0:
+                        for cam_id, direction in AIRSIM_CAMERAS.items():
+                            if direction == "front":
+                                active_cams[cam_id] = direction
+                                break
+                else:
+                    # 悬停时正常拉取
+                    for cam_id, direction in AIRSIM_CAMERAS.items():
+                        if direction == "front":
+                            active_cams[cam_id] = direction
+                            break
+                    other_cams = [(cid, d) for cid, d in AIRSIM_CAMERAS.items() if d != "front"]
+                    if other_cams and frame_counter % 10 == 0:
+                        pick = other_cams[(frame_counter // 10) % len(other_cams)]
+                        active_cams[pick[0]] = pick[1]
+
+                # 顺序拉取（最多2个摄像头，线程池开销不值得）
+                for cam_id, direction in active_cams.items():
+                    result = _fetch_one_camera(rpc_client, cam_id, vehicle)
+                    if result:
+                        cameras_payload[direction] = result
+                        _cached_frames[direction] = result
+
+                # 补上缓存的非活跃摄像头帧
+                for direction in AIRSIM_CAMERAS.values():
+                    if direction not in cameras_payload and direction in _cached_frames:
+                        cameras_payload[direction] = _cached_frames[direction]
 
                 if cameras_payload:
                     socketio.emit("sensor_cameras", cameras_payload)
@@ -657,7 +741,7 @@ def _start_sensor_stream():
                 for d in DIRECTIONS:
                     img = bridge.get_camera_image(d)
                     if img is not None:
-                        _, buf = cv2.imencode(".jpg", img, [cv2.IMWRITE_JPEG_QUALITY, 40])
+                        _, buf = cv2.imencode(".jpg", img, [cv2.IMWRITE_JPEG_QUALITY, 75])
                         b64 = base64.b64encode(buf.tobytes()).decode("ascii")
                         info = bridge.get_camera_info(d)
                         cameras_payload[d] = {
@@ -1950,8 +2034,18 @@ def _execute_plan_from_chat(task, steps, sid):
 
 @socketio.on("stop_execution")
 def on_stop_execution():
-    """中止当前执行：重置 is_executing，让无人机悬停等待下一指令。"""
+    """中止当前执行：通知 adapter 停止飞行 + 重置执行状态。"""
     state._ai_stop_event.set()
+
+    # 通知 adapter 立即停止飞行
+    try:
+        from adapters.adapter_manager import get_adapter
+        adapter = get_adapter()
+        if adapter and hasattr(adapter, 'request_stop'):
+            adapter.request_stop()
+            logger.info("🛑 已发送飞行打断信号")
+    except Exception:
+        pass
 
     # 强制重置执行状态
     was_executing = state.is_executing
