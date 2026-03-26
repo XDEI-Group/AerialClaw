@@ -134,3 +134,15 @@ class AirSimDirectClient:
         Returns dict with keys: point_cloud (flat list of x,y,z), timestamp, pose, etc.
         """
         return self._rpc.call("getLidarData", lidar_name, vehicle_name) or {}
+
+    def sim_get_collision_info(self, vehicle_name: str = "") -> dict:
+        """Get collision info. Returns dict with has_collided, normal, impact_point, etc."""
+        try:
+            return self._rpc.call("simGetCollisionInfo", vehicle_name) or {}
+        except Exception:
+            return {}
+
+    def move_by_velocity_async_join(self, vx: float, vy: float, vz: float,
+                                     duration: float, vehicle_name: str = ""):
+        """Speed control: fly at (vx, vy, vz) m/s for duration seconds (NED frame)."""
+        self._rpc.call("moveByVelocity", vx, vy, vz, duration, 0, 0, 0, 0, vehicle_name)

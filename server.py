@@ -253,6 +253,12 @@ def _try_connect_adapter():
                 conn_str = f"{host}:{port}"
                 state.push_log("info", f"Connecting to AirSim adapter ({conn_str})...")
                 ok = init_adapter("airsim", connection_str=conn_str, timeout=15)
+            elif sim_adapter == "airsim_physics":
+                host = os.getenv("AIRSIM_HOST", "127.0.0.1")
+                port = os.getenv("AIRSIM_PORT", "41451")
+                conn_str = f"{host}:{port}"
+                state.push_log("info", f"Connecting to AirSim Physics adapter ({conn_str})...")
+                ok = init_adapter("airsim_physics", connection_str=conn_str, timeout=15)
             elif sim_adapter == "mock":
                 state.push_log("info", "Using mock adapter (no hardware)...")
                 ok = init_adapter("mock", timeout=5)
@@ -268,7 +274,7 @@ def _try_connect_adapter():
             _start_telemetry_sync()
 
             # AirSim 模式下启动摄像头流推送
-            if sim_adapter == "airsim" and ok:
+            if sim_adapter in ("airsim", "airsim_physics") and ok:
                 _start_airsim_camera_stream()
                 # 启动被动感知引擎
                 _start_passive_perception()

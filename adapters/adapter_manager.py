@@ -53,6 +53,11 @@ def _register_builtins():
         register_adapter("airsim", AirSimAdapter)
     except ImportError:
         pass  # airsim 包未安装时跳过
+    try:
+        from adapters.airsim_physics import AirSimPhysicsAdapter
+        register_adapter("airsim_physics", AirSimPhysicsAdapter)
+    except ImportError:
+        pass
 
 _register_builtins()
 
