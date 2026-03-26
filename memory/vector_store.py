@@ -104,9 +104,27 @@ class _TFIDFEmbedder:
         return [x / norm for x in vec]
 
 
-def _build_embedder() -> _SentenceTransformerEmbedder | _TFIDFEmbedder:
+def _build_embedder():
+    """优先 sentence-transformers，超时/网络不通时降级到 TF-IDF。"""
+    import os
+    if os.environ.get("VECTOR_STORE_TFIDF_ONLY"):
+        logger.info("环境变量 VECTOR_STORE_TFIDF_ONLY 已设置，直接用 TF-IDF")
+        return _TFIDFEmbedder()
     try:
-        return _SentenceTransformerEmbedder()
+        import signal
+        def _timeout_handler(signum, frame):
+            raise TimeoutError("sentence-transformers 加载超时")
+        old = signal.signal(signal.SIGALRM, _timeout_handler)
+        signal.alarm(10)  # 10秒超时
+        try:
+            result = _SentenceTransformerEmbedder()
+            signal.alarm(0)
+            signal.signal(signal.SIGALRM, old)
+            return result
+        except Exception:
+            signal.alarm(0)
+            signal.signal(signal.SIGALRM, old)
+            raise
     except Exception as e:
         logger.warning(f"sentence-transformers 不可用，降级到 TF-IDF：{e}")
         return _TFIDFEmbedder()
