@@ -152,6 +152,7 @@ def _build_iteration_prompt(
     perception_summary, skill_table, soft_skills_summary,
     passive_perception=None,   # 被动感知最新数据
     world_obstacles=None,      # WorldModel 已知障碍物列表
+    similar_experiences=None,  # 向量检索到的相似历史经验
 ):
     """构建每轮迭代的 user prompt。"""
     # 执行历史
@@ -230,6 +231,9 @@ def _build_iteration_prompt(
 ## 环境感知
 {perception_summary or '(无最新感知)'}{passive_section}{obstacles_section}
 
+## 相似任务经验 (从历史中检索)
+{similar_experiences or '(无)'}
+
 ## 执行历史
 {history_str}
 {progress_hint}
@@ -280,6 +284,7 @@ class AgentLoop:
         on_complete=None,    # callback(success, summary)
         on_stream=None,      # callback(token_str) — LLM streaming 回调
         stop_event=None,     # threading.Event, 设置后停止
+        experience_store=None,  # VectorStore 实例，用于检索相似经验
     ):
         self.goal = goal
         self.llm = llm_client
@@ -293,6 +298,7 @@ class AgentLoop:
         self.on_stream = on_stream or (lambda *a: None)
         self.on_complete = on_complete or (lambda *a: None)
         self.stop_event = stop_event
+        self.experience_store = experience_store  # VectorStore 实例
 
         self.action_history = []
         self.runtime_tactic = ""  # 运行时生成的战术方案
@@ -403,11 +409,27 @@ class AgentLoop:
                 pass
 
             # 2. 思考
+            # 检索相似经验
+            similar_experiences = ''
+            if self.experience_store:
+                try:
+                    query = f'{self.goal} {world_state_str[:100]}'
+                    results = self.experience_store.search(query, top_k=3)
+                    results = [r for r in results if r.score >= 0.3]
+                    if results:
+                        exp_lines = []
+                        for r in results:
+                            exp_lines.append(f'- [{r.metadata.get("task","")}] {r.text[:100]}')
+                        similar_experiences = '\n'.join(exp_lines)
+                except Exception:
+                    pass
+
             user_prompt = _build_iteration_prompt(
                 self.goal, self.iteration, self.action_history,
                 world_state_str, perception, skill_table, soft_summary,
                 passive_perception=passive_data,
                 world_obstacles=world_obstacles,
+                similar_experiences=similar_experiences,
             )
 
             # 运行时战术: 当连续重复行为被检测到, 要求 LLM 先生成执行方案
@@ -697,6 +719,27 @@ class AgentLoop:
                     logger.info("[AgentLoop] SKILLS.md 已更新")
                 except Exception as e:
                     logger.warning(f"[AgentLoop] SKILLS.md 更新失败: {e}")
+
+                # ── 步骤 3b: 写入 experience_store ───────────────────
+                if self.experience_store:
+                    try:
+                        ts = datetime.now().strftime("%Y-%m-%d %H:%M")
+                        task_name = self.goal[:50]
+                        for lesson in reflection_result.get("task_lessons", []):
+                            if lesson and isinstance(lesson, str) and lesson.strip():
+                                self.experience_store.add(
+                                    lesson.strip(),
+                                    metadata={"task": task_name, "type": "task_lesson", "ts": ts},
+                                )
+                        for insight in reflection_result.get("environment_insights", []):
+                            if insight and isinstance(insight, str) and insight.strip():
+                                self.experience_store.add(
+                                    insight.strip(),
+                                    metadata={"task": task_name, "type": "env_insight", "ts": ts},
+                                )
+                        logger.info("[AgentLoop] 经验已写入 experience_store")
+                    except Exception as e:
+                        logger.warning(f"[AgentLoop] experience_store 写入失败: {e}")
             else:
                 logger.warning("[AgentLoop] 反思引擎返回空结果, 写入基础记录")
                 self._write_basic_memory(success)
@@ -740,14 +783,14 @@ class AgentLoop:
                     "success": success,
                     "time": datetime.now().isoformat(),
                 })
-                # 只保留最近 50 条
-                chains = chains[-50:]
+                # 只保留最近 100 条
+                chains = chains[-100:]
                 history_path.write_text(json.dumps(chains, ensure_ascii=False, indent=2))
 
                 # 检测模式
                 patterns = detect_patterns(
                     [{"skill_chain": c["chain"], "success": c["success"]} for c in chains],
-                    min_count=3,
+                    min_count=2,
                 )
                 if patterns:
                     mgr = get_soft_skill_manager()
@@ -765,6 +808,30 @@ class AgentLoop:
                                 logger.info(f"[AgentLoop] 自动生成新软技能: {final_name}")
         except Exception as e:
             logger.warning(f"[AgentLoop] 动态技能生成检查失败: {e}")
+
+        # ── 步骤 6: 把经验追加到相关软技能 ──────────────────────────
+        if reflection_result:
+            try:
+                from skills.soft_skill_manager import get_soft_skill_manager
+                mgr = get_soft_skill_manager()
+                ts = datetime.now().strftime("%Y-%m-%d %H:%M")
+                task_name = self.goal[:40]
+                outcome = "成功" if success else "失败"
+                for lesson in reflection_result.get("task_lessons", []):
+                    if not lesson or not isinstance(lesson, str):
+                        continue
+                    lesson = lesson.strip()
+                    if not lesson:
+                        continue
+                    for skill_name in mgr.list_skills():
+                        if skill_name.replace("_", " ") in lesson or any(
+                            kw in lesson for kw in skill_name.split("_")
+                        ):
+                            exp_text = f"[{ts}][{outcome}] {task_name}: {lesson}"
+                            mgr.update_experience(skill_name, exp_text)
+                            logger.debug(f"[AgentLoop] 经验追加到软技能: {skill_name}")
+            except Exception as e:
+                logger.warning(f"[AgentLoop] 软技能经验更新失败: {e}")
 
     def _write_basic_memory(self, success):
         """反思引擎失败时的基础记忆写入。"""

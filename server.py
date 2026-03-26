@@ -66,6 +66,7 @@ class AppState:
         self.skill_memory = None
         self.runtime = None
         self.initialized: bool = False
+        self.experience_store = None  # VectorStore 单例，用于经验检索
 
         # 传感器桥接
         self.sensor_bridge = None
@@ -220,6 +221,15 @@ def _do_init():
             reflection_engine=reflection_engine,
             skill_evolution=skill_evolution,
         )
+
+        # ── 经验向量存储 ──────────────────────────────────────────────────────
+        try:
+            from memory.vector_store import VectorStore
+            state.experience_store = VectorStore(collection="experiences")
+            state.push_log("success", "经验向量存储已初始化")
+        except Exception as e:
+            state.experience_store = None
+            state.push_log("warning", f"经验向量存储加载失败(非致命): {e}")
 
         state.initialized = True
 
@@ -1506,6 +1516,7 @@ def on_ai_task(data):
                 on_complete=on_complete,
                 on_stream=_on_stream,
                 stop_event=state._ai_stop_event,
+                experience_store=getattr(state, "experience_store", None),
             )
             # 注入被动感知引擎引用
             try:
@@ -1876,6 +1887,7 @@ def _run_agent_loop(goal, sid):
             on_complete=on_complete,
             on_stream=lambda token: socketio.emit("ai_stream", {"token": token, "done": False}),
             stop_event=state._ai_stop_event,
+            experience_store=getattr(state, "experience_store", None),
         )
         # 注入被动感知引擎引用
         try:

@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 
 # ── 6.1 重复模式检测 ────────────────────────────────────────────────────────
 
-def detect_patterns(task_logs: list, min_count: int = 3, min_chain_len: int = 2) -> list:
+def detect_patterns(task_logs: list, min_count: int = 2, min_chain_len: int = 2) -> list:
     """
     从任务日志中检测重复出现的技能链模式。
 
