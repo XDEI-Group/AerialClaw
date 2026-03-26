@@ -2216,50 +2216,6 @@ def _world_state_broadcaster():
             socketio.emit("world_state", state.get_world_snapshot())
 
 
-# ── Safety API ────────────────────────────────────────────────────────────────
-
-@app.route("/api/safety/status", methods=["GET"])
-def api_safety_status():
-    """安全体系状态"""
-    try:
-        from core.safety.config import get_safety_config
-        from core.safety.flight_envelope import FlightEnvelope
-        cfg = get_safety_config()
-        fe = FlightEnvelope()
-        return jsonify({
-            "ok": True,
-            "level": cfg.level,
-            "gates": {
-                "command_filter": {"name": "Command Filter", "passed": 0, "blocked": 0},
-                "sandbox": {"name": "Sandbox", "passed": 0, "blocked": 0},
-                "approval": {"name": "Approval", "passed": 0, "blocked": 0},
-                "flight_envelope": {"name": "Flight Envelope", "passed": 0, "blocked": 0},
-            },
-            "envelope": {
-                "max_speed": fe.MAX_SPEED,
-                "max_altitude": fe.MAX_ALTITUDE,
-                "min_battery": fe.MIN_BATTERY,
-                "critical_battery": fe.CRITICAL_BATTERY,
-                "heartbeat_timeout": fe.HEARTBEAT_TIMEOUT,
-                "max_distance": fe.MAX_DISTANCE,
-            },
-        })
-    except Exception as e:
-        return jsonify({"ok": False, "error": str(e)}), 500
-
-
-@app.route("/api/safety/audit", methods=["GET"])
-def api_safety_audit():
-    """审计日志"""
-    limit = int(request.args.get("limit", 10))
-    try:
-        from core.safety.audit_log import AuditLog
-        al = AuditLog()
-        logs = al.get_log(limit=limit)
-        return jsonify({"ok": True, "logs": [e.to_dict() for e in logs], "count": len(logs)})
-    except Exception as e:
-        return jsonify({"ok": True, "logs": [], "count": 0})
-
 
 # ── Memory API ────────────────────────────────────────────────────────────────
 

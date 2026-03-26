@@ -96,40 +96,7 @@ class RunPython(Skill):
     output_schema = {"stdout": "标准输出", "stderr": "标准错误", "exit_code": "int"}
 
     def execute(self, input_data: dict) -> SkillResult:
-        code = input_data.get("code", "")
-        if not code.strip():
-            return SkillResult(success=False, error_msg="code 参数不能为空")
-
-        try:
-            from core.safety.sandbox import get_sandbox
-            sandbox = get_sandbox()
-        except Exception as e:
-            return SkillResult(success=False, error_msg=f"沙箱初始化失败: {e}")
-
-        start = time.time()
-        try:
-            result = sandbox.execute(code, timeout=10)
-        except Exception as e:
-            return SkillResult(
-                success=False,
-                error_msg=f"沙箱执行异常: {e}",
-                cost_time=round(time.time() - start, 2),
-            )
-
-        elapsed = round(time.time() - start, 2)
-        logger.info(f"run_python: exit_code={result.exit_code}, time={elapsed}s")
-
-        return SkillResult(
-            success=result.success,
-            output={
-                "stdout": result.stdout[:_MAX_RESPONSE_LEN],
-                "stderr": result.stderr[:_MAX_RESPONSE_LEN],
-                "exit_code": result.exit_code,
-            },
-            error_msg=result.stderr[:500] if not result.success else "",
-            cost_time=elapsed,
-            logs=[f"run_python: exit={result.exit_code}, {elapsed}s [{result.sandbox_type}]"],
-        )
+        return SkillResult(success=False, error_msg="run_python 沙箱已移除，该技能暂不可用")
 
 
 # ══════════════════════════════════════════════════════════════════════════════

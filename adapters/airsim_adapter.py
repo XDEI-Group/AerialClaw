@@ -222,12 +222,6 @@ class AirSimAdapter(SimAdapter):
                         self.is_flying = False
                         self._last_obstacle_info = {'front_dist': front_dist, 'direction': '前方', 'position': {'x': nx, 'y': ny, 'z': nz}, 'target': {'x': tx, 'y': ty, 'z': tz}}
                         return 'obstacle'
-                        'front_dist': front_dist,
-                        'direction': cam_dir,
-                        'position': {'x': nx, 'y': ny, 'z': nz},
-                        'target': {'x': tx, 'y': ty, 'z': tz},
-                    }
-                    return 'obstacle'
         
         self._hold_x, self._hold_y, self._hold_z = tx, ty, tz
         self.is_flying = False
