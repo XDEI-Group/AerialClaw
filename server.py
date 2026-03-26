@@ -332,9 +332,10 @@ def _start_telemetry_sync():
                     if st.position_ned:
                         p = st.position_ned
                         update["robots"]["UAV_1"]["position"] = [round(p.north, 2), round(p.east, 2), round(p.altitude, 2)]
+                    # in_air 始终更新（执行期间 LLM 也需要知道飞行状态）
+                    update["robots"]["UAV_1"]["in_air"] = st.in_air
                     if not state.is_executing:
                         update["robots"]["UAV_1"]["status"] = "airborne" if st.in_air else "idle"
-                        update["robots"]["UAV_1"]["in_air"] = st.in_air
 
                     state.world_model.update_world_state(update)
                     socketio.emit("world_state", state.get_world_snapshot())

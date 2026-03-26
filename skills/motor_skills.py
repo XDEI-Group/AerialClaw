@@ -288,7 +288,7 @@ class ChangeAltitude(Skill):
         return SkillResult(
             success=result.success,
             error_msg=result.message if not result.success else "",
-            data={
+            output={
                 "previous_altitude": round(current_alt, 1),
                 "target_altitude": altitude,
                 "current_altitude": round(abs(final_pos.down), 1),
