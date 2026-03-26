@@ -149,9 +149,9 @@ class AirSimPhysicsAdapter(SimAdapter):
         用 moveByRollPitchYawZ 飞向目标点，主循环控制 pitch/yaw。
         返回: 'ok' / 'stopped' / 'collision' / 'obstacle' / 'timeout'
         """
-        MAX_PITCH = 0.15      # 最大前倾角（弧度，约 8.5°）
-        SLOW_DIST = 10.0      # 开始减速的距离（米）
-        ARRIVE_DIST = 2.0     # 到达判定距离（米）
+        MAX_PITCH = 0.35      # 最大前倾角（弧度，约 20°，实测 0.15→~2m/s 太慢）
+        SLOW_DIST = 15.0      # 开始减速的距离（米）
+        ARRIVE_DIST = 3.0     # 到达判定距离（米）
         CMD_DURATION = 0.5    # 每次指令持续时间（秒）
         CHECK_INTERVAL = 0.1  # 状态检查间隔（秒）
         SAFE_DIST = 8.0       # 障碍物安全距离（米）
