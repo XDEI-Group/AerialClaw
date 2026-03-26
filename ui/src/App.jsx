@@ -74,6 +74,7 @@ export default function App() {
     cockpitInitialView,
     chatHistory,
     aiThinking,
+    aiThoughts,
     aiStream,
     executeSkill, selectRobot, setMode, submitAiTask, stopExecution, initSystem,
     openCockpit, closeCockpit, getSocket,
@@ -165,6 +166,7 @@ export default function App() {
                   sensorCameras={sensorCameras}
                   sensorLidar={sensorLidar}
                   aiThinking={aiThinking}
+                  aiThoughts={aiThoughts}
                   aiStream={aiStream}
                   lastAiPlan={lastAiPlan}
                   logs={logs}

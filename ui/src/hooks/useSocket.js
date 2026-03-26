@@ -24,6 +24,7 @@ export function useSocket() {
   const [lastAiPlan, setLastAiPlan] = useState(null)
   const [lastAiReport, setLastAiReport] = useState(null)
   const [aiThinking, setAiThinking] = useState({ phase: 'idle', detail: '' })
+  const [aiThoughts, setAiThoughts] = useState([])  // 每轮结构化思考链
   const [aiStream, setAiStream] = useState({ text: '', done: true })
   const [sensorCamera, setSensorCamera] = useState(null)
   const [sensorCameras, setSensorCameras] = useState({})
@@ -55,7 +56,18 @@ export function useSocket() {
     socket.on('skill_result', (data) => setLastSkillResult(data))
     socket.on('ai_plan_result', (data) => setLastAiPlan(data))
     socket.on('ai_execution_report', (data) => setLastAiReport(data))
-    socket.on('ai_thinking', (data) => setAiThinking(data))
+    socket.on('ai_thinking', (data) => {
+      setAiThinking(data)
+      // 新任务开始时清空思考链
+      if (data.phase === 'planning') setAiThoughts([])
+    })
+    socket.on('ai_thought', (data) => {
+      setAiThoughts(prev => {
+        // 同一轮次只保留最新的
+        const filtered = prev.filter(t => t.iteration !== data.iteration)
+        return [...filtered, data].sort((a, b) => a.iteration - b.iteration)
+      })
+    })
     socket.on('ai_stream', (data) => setAiStream(prev => {
       if (data.done) return { text: '', done: true }
       return { text: (prev.done ? '' : (prev.text || '')) + data.token, done: false }
@@ -174,6 +186,7 @@ export function useSocket() {
     lastAiPlan,
     lastAiReport,
     aiThinking,
+    aiThoughts,
     aiStream,
     sensorCamera,
     sensorCameras,

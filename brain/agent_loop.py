@@ -150,6 +150,8 @@ def _read_file(path, max_chars=500):
 def _build_iteration_prompt(
     goal, iteration, action_history, world_state_str,
     perception_summary, skill_table, soft_skills_summary,
+    passive_perception=None,   # 被动感知最新数据
+    world_obstacles=None,      # WorldModel 已知障碍物列表
 ):
     """构建每轮迭代的 user prompt。"""
     # 执行历史
@@ -157,10 +159,15 @@ def _build_iteration_prompt(
         history_lines = []
         for i, h in enumerate(action_history):
             status = "成功" if h["success"] else f"失败({h.get('error', '?')})"
-            history_lines.append(
-                f"  第{i+1}步: {h['skill']} → {status}"
-                f"{' | 结果: ' + str(h.get('output', ''))[:60] if h.get('output') else ''}"
-            )
+            # 障碍物失败时展示更多 output 信息
+            if (not h["success"] and isinstance(h.get("output"), dict)
+                    and h["output"].get("obstacle_detected")):
+                out_str = " | 结果: " + json.dumps(h["output"], ensure_ascii=False)[:200]
+            elif h.get("output"):
+                out_str = " | 结果: " + str(h["output"])[:60]
+            else:
+                out_str = ""
+            history_lines.append(f"  第{i+1}步: {h['skill']} → {status}{out_str}")
             if h.get("reflection"):
                 history_lines.append(f"    反思: {h['reflection']}")
         history_str = "\n".join(history_lines)
@@ -194,6 +201,26 @@ def _build_iteration_prompt(
                 f"禁止再次使用 {repeated_skill}, 除非你先执行了移动类技能 (fly_to/fly_relative)。"
             )
 
+    # 被动感知补充段落
+    passive_section = ""
+    if passive_perception and isinstance(passive_perception, dict):
+        pp_summary = passive_perception.get("summary", "")
+        pp_obstacles = passive_perception.get("obstacles", [])
+        if pp_summary:
+            passive_section += f"\n### 被动感知最新数据\n{pp_summary}"
+        if pp_obstacles:
+            obs_lines = "\n".join(f"  - {o}" for o in pp_obstacles[:5])
+            passive_section += f"\n障碍物感知:\n{obs_lines}"
+
+    # WorldModel 障碍物段落
+    obstacles_section = ""
+    if world_obstacles:
+        obs_lines = "\n".join(
+            f"  - 方向:{o.get('direction','?')} 类型:{o.get('type','障碍物')} 距离:{o.get('distance','?')}m"
+            for o in world_obstacles[:10]
+        )
+        obstacles_section = f"\n### 已知障碍物 (WorldModel)\n{obs_lines}"
+
     return f"""## 目标
 {goal}
 
@@ -201,7 +228,7 @@ def _build_iteration_prompt(
 {world_state_str}
 
 ## 环境感知
-{perception_summary or '(无最新感知)'}
+{perception_summary or '(无最新感知)'}{passive_section}{obstacles_section}
 
 ## 执行历史
 {history_str}
@@ -359,10 +386,28 @@ class AgentLoop:
             except Exception:
                 pass
 
+            # 获取被动感知数据
+            passive_data = None
+            try:
+                if hasattr(self, '_passive_engine') and self._passive_engine:
+                    passive_data = self._passive_engine.get_latest()
+            except Exception:
+                pass
+
+            # 获取 WorldModel 障碍物
+            world_obstacles = []
+            try:
+                map_data = self.world_model._state.get('map', {})
+                world_obstacles = map_data.get('obstacles', [])[-10:]
+            except Exception:
+                pass
+
             # 2. 思考
             user_prompt = _build_iteration_prompt(
                 self.goal, self.iteration, self.action_history,
                 world_state_str, perception, skill_table, soft_summary,
+                passive_perception=passive_data,
+                world_obstacles=world_obstacles,
             )
 
             # 运行时战术: 当连续重复行为被检测到, 要求 LLM 先生成执行方案

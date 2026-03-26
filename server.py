@@ -1440,6 +1440,17 @@ def on_ai_task(data):
                 decision = output.get("decision", "")
                 action = output.get("action", {})
                 progress = output.get("goal_progress", "")
+                reflection = output.get("reflection")
+                # 新事件：结构化思考链，前端展示每轮卡片
+                socketio.emit("ai_thought", {
+                    "iteration": iteration,
+                    "thinking": thinking,
+                    "decision": decision,
+                    "reflection": reflection,
+                    "progress": progress,
+                    "skill": action.get("skill", ""),
+                    "parameters": action.get("parameters", {}),
+                })
                 socketio.emit("ai_thinking", {
                     "phase": "thinking",
                     "detail": f"[第{iteration}轮] {thinking[:80]}",
@@ -1495,6 +1506,12 @@ def on_ai_task(data):
                 on_stream=_on_stream,
                 stop_event=state._ai_stop_event,
             )
+            # 注入被动感知引擎引用
+            try:
+                from skills.perception_skills import _get_passive_perception
+                loop._passive_engine = _get_passive_perception()
+            except Exception:
+                loop._passive_engine = None
             state._current_agent_loop = loop
             loop.run()
             state._current_agent_loop = None
@@ -1803,6 +1820,18 @@ def _run_agent_loop(goal, sid):
             thinking = output.get("thinking", "")
             decision = output.get("decision", "")
             progress = output.get("goal_progress", "")
+            action = output.get("action", {})
+            reflection = output.get("reflection")
+            # 新事件：结构化思考链
+            socketio.emit("ai_thought", {
+                "iteration": iteration,
+                "thinking": thinking,
+                "decision": decision,
+                "reflection": reflection,
+                "progress": progress,
+                "skill": action.get("skill", ""),
+                "parameters": action.get("parameters", {}),
+            })
             socketio.emit("ai_thinking", {
                 "phase": "thinking",
                 "detail": f"[第{iteration}轮] {thinking[:80]}",
@@ -1847,6 +1876,12 @@ def _run_agent_loop(goal, sid):
             on_stream=lambda token: socketio.emit("ai_stream", {"token": token, "done": False}),
             stop_event=state._ai_stop_event,
         )
+        # 注入被动感知引擎引用
+        try:
+            from skills.perception_skills import _get_passive_perception
+            loop._passive_engine = _get_passive_perception()
+        except Exception:
+            loop._passive_engine = None
         loop.run()
         socketio.emit("ai_stream", {"token": "", "done": True})
 

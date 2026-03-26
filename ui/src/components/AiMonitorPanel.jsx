@@ -134,20 +134,18 @@ function ColHeader({ icon, title, status, color }) {
   )
 }
 
-/* ── 栏1: LLM 流式输出 ──────────────────────────────────── */
-function LLMColumn({ aiStream, aiThinking }) {
+/* ── 栏1: LLM 思考链 + 流式输出 ─────────────────────────── */
+function LLMColumn({ aiStream, aiThinking, aiThoughts }) {
   const ref = useRef(null)
-  useEffect(() => { if (ref.current) ref.current.scrollTop = ref.current.scrollHeight }, [aiStream])
+  useEffect(() => { if (ref.current) ref.current.scrollTop = ref.current.scrollHeight }, [aiThoughts, aiStream])
 
   const phase = aiThinking?.phase || 'idle'
   const isActive = phase === 'planning' || (aiStream?.text && !aiStream?.done)
-  const statusText = phase === 'planning' ? 'THINKING' : !aiStream?.done ? 'STREAMING' : 'IDLE'
-  const statusColor = isActive ? '#a78bfa' : '#4a5568'
+  const statusText = phase === 'planning' ? 'THINKING' : !aiStream?.done ? 'STREAMING' : aiThoughts?.length > 0 ? `${aiThoughts.length} ROUNDS` : 'IDLE'
+  const statusColor = isActive ? '#a78bfa' : aiThoughts?.length > 0 ? '#22c55e' : '#4a5568'
 
   const raw = aiStream?.text || ''
   const displayText = raw.replace(/<think>[\s\S]*?<\/think>/gi, '').trim()
-  const thinkMatch = raw.match(/<think>([\s\S]*?)(<\/think>|$)/i)
-  const thinkText = thinkMatch ? thinkMatch[1].trim() : ''
 
   return (
     <div style={{ flex: 1.2, display: 'flex', flexDirection: 'column', minWidth: 0,
@@ -155,20 +153,51 @@ function LLMColumn({ aiStream, aiThinking }) {
       <ColHeader icon="▸" title="LLM OUTPUT" status={statusText} color={statusColor} />
       <div ref={ref} style={{ flex: 1, overflowY: 'auto', padding: '4px 6px',
         fontFamily: '"JetBrains Mono", "Fira Code", monospace', fontSize: 10, lineHeight: 1.6 }}>
-        {thinkText && (
-          <div style={{ color: 'rgba(167,139,250,0.4)', borderLeft: '2px solid rgba(167,139,250,0.2)',
-            paddingLeft: 6, marginBottom: 4, fontSize: 9 }}>
-            <div style={{ color: 'rgba(167,139,250,0.6)', fontSize: 8, marginBottom: 2 }}>// reasoning chain</div>
-            {thinkText.slice(-400)}
+
+        {/* 思考链卡片 */}
+        {(aiThoughts || []).map((t) => (
+          <div key={t.iteration} style={{
+            marginBottom: 6, padding: '4px 6px', borderRadius: 3,
+            background: 'rgba(167,139,250,0.05)',
+            border: '1px solid rgba(167,139,250,0.12)',
+          }}>
+            <div style={{ color: '#a78bfa', fontSize: 9, marginBottom: 3, letterSpacing: 1 }}>
+              [第{t.iteration}轮]
+              {t.skill && <span style={{ marginLeft: 6, color: '#f59e0b' }}>→ {t.skill}</span>}
+            </div>
+            {t.thinking && (
+              <div style={{ color: '#e2e8f0', fontSize: 10, marginBottom: 2 }}>
+                🤔 {t.thinking}
+              </div>
+            )}
+            {t.reflection && (
+              <div style={{ color: 'rgba(96,165,250,0.8)', fontSize: 9, marginBottom: 2 }}>
+                💡 {t.reflection}
+              </div>
+            )}
+            {t.progress && (
+              <div style={{ color: 'rgba(34,197,94,0.7)', fontSize: 9 }}>
+                📊 {t.progress}
+              </div>
+            )}
           </div>
-        )}
-        {displayText ? (
-          <span style={{ color: '#e2e8f0' }}>
-            {displayText}
-            {!aiStream?.done && <span className="cursor-blink">▊</span>}
-          </span>
-        ) : (
+        ))}
+
+        {/* 无思考链时的占位 */}
+        {(!aiThoughts || aiThoughts.length === 0) && !displayText && (
           <span style={{ color: 'rgba(167,139,250,0.2)' }}>{'>'} Awaiting LLM response..._</span>
+        )}
+
+        {/* 当前流式输出（raw LLM output） */}
+        {displayText && (
+          <div style={{ color: 'rgba(167,139,250,0.35)', borderLeft: '2px solid rgba(167,139,250,0.15)',
+            paddingLeft: 6, marginTop: 4, fontSize: 9 }}>
+            <div style={{ color: 'rgba(167,139,250,0.5)', fontSize: 8, marginBottom: 2 }}>// raw stream</div>
+            <span style={{ color: 'rgba(226,232,240,0.5)' }}>
+              {displayText}
+              {!aiStream?.done && <span className="cursor-blink">▊</span>}
+            </span>
+          </div>
         )}
       </div>
     </div>
@@ -302,7 +331,7 @@ const CAM_DIRECTIONS = [
 
 /* ── 主面板 ──────────────────────────────────────────────── */
 export default function AiMonitorPanel({
-  sensorCameras, sensorLidar, aiThinking, aiStream, lastAiPlan, logs, onOpenCockpit,
+  sensorCameras, sensorLidar, aiThinking, aiThoughts, aiStream, lastAiPlan, logs, onOpenCockpit,
   socket, worldState, onMapCommand,
 }) {
   const [activeCam, setActiveCam] = useState('front')  // 当前主摄像头
@@ -413,7 +442,7 @@ export default function AiMonitorPanel({
 
       {/* 下栏: 三栏活动面板 */}
       <div style={{ flex: 1, display: 'flex', gap: 4, minHeight: 0, overflow: 'hidden' }}>
-        <LLMColumn aiStream={aiStream} aiThinking={aiThinking} />
+        <LLMColumn aiStream={aiStream} aiThinking={aiThinking} aiThoughts={aiThoughts} />
         <PlanColumn aiThinking={aiThinking} lastAiPlan={lastAiPlan} logs={logs} />
         <SysLogColumn logs={logs} aiThinking={aiThinking} />
       </div>

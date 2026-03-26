@@ -175,15 +175,33 @@ class FlyTo(Skill):
         logger.info(f"fly_to: ({pos.north:.1f},{pos.east:.1f},alt={current_alt:.0f}m) → ({n},{e},alt={target_alt:.0f}m)")
         
         result = adapter.fly_to_ned(n, e, d, speed)
-        
+
         final_pos = adapter.get_position()
         final_alt = abs(final_pos.down)
         dist = ((final_pos.north - pos.north)**2 + (final_pos.east - pos.east)**2) ** 0.5
-        
+
         msg = result.message
         if height_corrected and result.success:
             msg = f"已到达，高度从{target_alt:.0f}m（你给的值不安全，已自动修正到80m）"
-        
+
+        # 障碍物阻挡：在 output 中包含详细信息供 LLM 重规划
+        if not result.success and '障碍物' in result.message:
+            obstacle_info = getattr(adapter, '_last_obstacle_info', {})
+            return SkillResult(
+                success=False,
+                output={
+                    'obstacle_detected': True,
+                    'obstacle_direction': obstacle_info.get('direction', '前方'),
+                    'obstacle_distance': obstacle_info.get('front_dist', 0),
+                    'current_position': [round(final_pos.north, 1), round(final_pos.east, 1), round(final_pos.down, 1)],
+                    'original_target': [n, e, d],
+                    'suggestion': '建议: 1) change_altitude 升高绕过 2) fly_relative 横向避开 3) 重新规划路线',
+                },
+                error_msg=result.message,
+                cost_time=result.duration,
+                logs=[f"fly_to: 障碍物阻挡 {result.message}"],
+            )
+
         return SkillResult(
             success=result.success,
             output={
