@@ -33,6 +33,50 @@
 
 ## 任务经验
 
+- [2026-03-28 00:32] 任务: 巡检任务[65,10],[58，76],[-15,50],[-92,82]四个位 [成功] 技能链: takeoff → fly_to → observe → report → fly_to → observe → report → change_altitude → fly_to → observe → report → fly_to → observe → report → fly_to
+
+- [2026-03-28 00:25] 任务: 巡检任务[65,10],[58，76],[-15,50],[-92,82]四个位 [成功] 技能链: takeoff → fly_to → observe → look_around → report → fly_to → observe → look_around → report → fly_to → observe → look_around → report → fly_to → observe → look_around → report → fly_to
+
+- [2026-03-28 00:14] 任务: 巡检任务[65,10],[63，102],[-15,50],[-92,82]四个 [成功] 技能链: takeoff → fly_to → observe → report → fly_to → observe → report → fly_to → observe → report → fly_to → observe → report → fly_to
+
+- [2026-03-27 23:02] 任务: 巡检任务[0,0],[0,-15],[-30,-17],[-33,16]四个位置 [未完成] 技能链: takeoff → fly_to → observe → report → fly_to → observe → report → fly_to → observe → report → fly_to → observe → report → fly_to → observe
+
+- [2026-03-27 22:08] 任务: 巡检任务[-0,0],[0,-15],[-30,-17],[-33,16]四个位 [未完成] 技能链: takeoff → get_position → fly_to → observe → report → fly_to → observe → report → fly_to → observe → report → fly_to → observe → report → fly_to → observe
+
+- [2026-03-27 20:46] 任务: 巡检任务[-0,0],[0,-15],[-30,-17],[-33,16]四个位 [未完成] 技能链: takeoff → fly_to → observe → takeoff → takeoff
+  - observe 失败: 前提条件不满足: 
+  - takeoff 失败: RPC error: rpclib: function 'takeoff' (called with 2 arg(s)) threw an exception. The exception is not derived from std::exception. No further information available.
+  - takeoff 失败: RPC error: rpclib: function 'takeoff' (called with 2 arg(s)) threw an exception. The exception is not derived from std::exception. No further information available.
+
+- [2026-03-27 20:12] 任务: 巡检任务[-0,0],[0,-15],[-30,-17],[-33,16]四个位 [未完成] 技能链: change_altitude → fly_to → hover
+  - change_altitude 失败: Skill execution raised exception: 'bool' object is not callable
+  - fly_to 失败: Skill execution raised exception: 'bool' object is not callable
+  - hover 失败: Skill execution raised exception: 'bool' object is not callable
+
+- [2026-03-27 17:53] 任务: 对周围的建筑区域进行一次巡检，近处的底层建筑,检查有没有异常情况，完成后汇报。 [未完成] 技能链: change_altitude → look_around → fly_to → change_altitude → fly_to → observe → observe → change_altitude → observe → fly_relative → observe → change_altitude → observe → report → observe
+  - fly_to 失败: ⚠️ 前方1.8m 处检测到障碍物，已自动悬停。请重新规划航线或改变方向。
+  - fly_to 失败: fly_to_ned: timeout
+
+- [2026-03-27 13:56] 任务: 对周围的建筑区域进行一次巡检，近处的底层建筑,检查有没有异常情况，完成后汇报。 [未完成] 技能链: takeoff → fly_to → fly_relative → observe → change_altitude → observe → look_around → observe → observe → observe → fly_relative → change_altitude → observe → report → fly_relative
+  - fly_to 失败: fly_to_ned: timeout
+  - fly_relative 失败: fly_to_ned: timeout
+  - observe 失败: 系统拦截: observe 已连续使用3次且无位置变化, 你必须先移动 (fly_to/fly_relative) 再观察
+
+- [2026-03-27 00:45] 任务: 对周围的建筑区域进行一次巡检，重点关注中层建筑群、近处的底层建筑和高层商业区，检 [未完成] 技能链: change_altitude → change_altitude → fly_to → change_altitude → change_altitude → fly_to → fly_to → look_around → observe → report → fly_to → fly_to → fly_relative → observe
+  - fly_to 失败: fly_to_ned: timeout
+  - fly_to 失败: fly_to_ned: timeout
+  - fly_to 失败: fly_to_ned: timeout
+  - fly_relative 失败: fly_to_ned: timeout
+
+- [2026-03-26 23:12] 任务: 对周围的建筑区域进行一次巡检，重点关注中层建筑群、近处的底层建筑和高层商业区，检 [未完成] 技能链: takeoff → change_altitude → look_around → observe → fly_to → observe → report → report → report → fly_to → observe → report → report → report → fly_to
+  - look_around 失败: 旋转失败: 'AirSimPhysicsAdapter' object has no attribute 'set_velocity_body'
+  - report 失败: 报告内容不能为空
+  - report 失败: 报告内容不能为空
+  - report 失败: 系统拦截: report 已连续使用3次且无位置变化, 你必须先移动 (fly_to/fly_relative) 再观察
+  - report 失败: 报告内容不能为空
+  - report 失败: 报告内容不能为空
+  - report 失败: 系统拦截: report 已连续使用3次且无位置变化, 你必须先移动 (fly_to/fly_relative) 再观察
+
 - [2026-03-23 21:02] 任务: 起飞到12米，向东飞30米，观察前方，然后返回起飞点降落 [未完成] 技能链: 
 
 - [2026-03-23 20:55] 任务: 起飞到12米，向东飞30米，观察前方，然后返回起飞点降落 [未完成] 技能链: 
@@ -568,6 +612,18 @@
   - 在没有障碍和紧急情况的环境中，任务规划可以保持简单直接，减少复杂性以提高成功率。
   - 飞行任务中，合理的技能链执行顺序（如先起飞再巡航）是确保任务成功的关键。
 
+- [2026-03-28 00:04] 成功完成四点巡检任务，依次飞往[-0,0],[0,-15],[-30,-17],[-33,16]并在每个位置执行观察与报告，全程无障碍无重规划。 -- 任务完全成功。无人机电量充足（100%），状态正常（idle），规划路径合理，技能链执行顺序正确（fly_to → observe → report 循环），无任何异常事件干扰，是一次标准的多点巡检范例执行。
+  - 多点巡检任务的标准执行模式为：takeoff → [fly_to → observe → report] × N → fly_to(返回/结束)，该模式在本次任务中验证有效。
+  - 巡检任务中每个目标点均应紧跟 observe + report，确保感知数据及时记录，不应将多个 fly_to 连续执行后再统一观察。
+  - takeoff 耗时约23.7s，在任务时间预算中占比较大（约30%），规划总时长时需充分考虑起飞时间。
+  - 四点巡检（含起飞）总耗时约78.6s，平均每个巡检点（fly_to+observe+report）约耗时11~14s，可作为同类任务时间估算基准。
+
+- [2026-03-28 00:04] 成功完成四点巡检任务，依次飞往[-0,0],[0,-15],[-30,-17],[-33,16]并在每个位置执行观察与报告，全程无障碍无重规划。 -- 任务完全成功。无人机电量充足（100%），状态正常（idle），规划路径合理，技能链执行顺序正确（fly_to → observe → report 循环），无任何异常事件干扰，是一次标准的多点巡检范例执行。
+  - 多点巡检任务的标准执行模式为：takeoff → [fly_to → observe → report] × N → fly_to(返回/结束)，该模式在本次任务中验证有效。
+  - 巡检任务中每个目标点均应紧跟 observe + report，确保感知数据及时记录，不应将多个 fly_to 连续执行后再统一观察。
+  - takeoff 耗时约23.7s，在任务时间预算中占比较大（约30%），规划总时长时需充分考虑起飞时间。
+  - 四点巡检（含起飞）总耗时约78.6s，平均每个巡检点（fly_to+observe+report）约耗时11~14s，可作为同类任务时间估算基准。
+
 ## 策略偏好
 
 - [2026-03-13 15:02] 在涉及视觉/环境描述的任务中，默认采用“多层感知链”：先使用 look_around 获取全局概况，再调用 scan_area 细化区域信息，最后用多次冗余 observe 获取可描述细节；规划时引入连续失败监控（尤其是 observe），当同一技能连续失败达到阈值时，自动切换到 hover + 替代感知技能的保守策略。同时，将 UAV 最终状态（例如 error 标记）作为任务风险信号，即使任务结果为成功，也应在后续任务中更谨慎地使用高负载感知技能。
@@ -718,3 +774,7 @@
 - [2026-03-18 22:46] 在所有涉及飞行或状态查询的任务中，引入统一的前置检查步骤：若 UAV.status == 'error'，则禁止调用常规飞行/感知技能，转而触发诊断/恢复流程或直接标记任务不可执行。对于同一技能出现“先长耗时执行、后立即 0s 失败”的模式时，优先进行系统级状态检查，而不是简单重试技能。
 
 - [2026-03-18 22:46] 在所有涉及飞行或状态查询的任务中，引入统一的前置检查步骤：若 UAV.status == 'error'，则禁止调用常规飞行/感知技能，转而触发诊断/恢复流程或直接标记任务不可执行。对于同一技能出现“先长耗时执行、后立即 0s 失败”的模式时，优先进行系统级状态检查，而不是简单重试技能。
+
+- [2026-03-28 00:04] 多点巡检任务优先采用 fly_to → observe → report 的逐点闭环模式，不建议批量飞行后统一感知；起飞时间应在任务总时长预算中单独计入约25s。
+
+- [2026-03-28 00:04] 多点巡检任务优先采用 fly_to → observe → report 的逐点闭环模式，不建议批量飞行后统一感知；起飞时间应在任务总时长预算中单独计入约25s。

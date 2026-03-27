@@ -519,7 +519,7 @@ class Observe(Skill):
     )
     skill_type = "perception"
     robot_type = ["UAV"]
-    preconditions = []
+    preconditions = []  # 无前提条件
     cost = 4.0
     input_schema = {
         "direction": "str, 拍照方向: front/rear/left/right/down/around(环视), 默认front。后方用rear不用back, 向下用down",
@@ -532,13 +532,7 @@ class Observe(Skill):
     }
 
     def check_precondition(self, robot_state: dict) -> bool:
-        adapter = _get_adapter()
-        if adapter is None:
-            return False
-        try:
-            return adapter.is_in_air()
-        except Exception:
-            return False
+        return True  # 无前提条件，随时可用
 
     # 方向别名映射: LLM 可能传各种写法，统一到 Gazebo 实际的 front/rear/left/right
     _DIR_ALIASES = {

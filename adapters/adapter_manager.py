@@ -58,6 +58,11 @@ def _register_builtins():
         register_adapter("airsim_physics", AirSimPhysicsAdapter)
     except ImportError:
         pass
+    try:
+        from adapters.mavsdk_adapter import MavsdkAdapter
+        register_adapter("mavsdk", MavsdkAdapter)
+    except ImportError:
+        pass
 
 _register_builtins()
 

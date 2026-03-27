@@ -14,6 +14,7 @@ motor_skills.py — 运动技能（物理层）
 """
 
 import time
+import math
 import logging
 
 from skills.base_skill import Skill, SkillResult
@@ -24,7 +25,15 @@ logger = logging.getLogger(__name__)
 def _get_adapter():
     """获取当前活跃的仿真适配器。"""
     from adapters.adapter_manager import get_adapter
-    return get_adapter()
+    adapter = get_adapter()
+    if adapter is None:
+        logger.error("[motor] adapter is None — get_adapter() returned None")
+    else:
+        try:
+            logger.debug(f"[motor] adapter={adapter.name} connected={adapter.is_connected() if callable(adapter.is_connected) else adapter.is_connected}")
+        except Exception:
+            pass
+    return adapter
 
 
 def _check_in_air() -> bool:
@@ -33,8 +42,11 @@ def _check_in_air() -> bool:
     if adapter is None:
         return False
     try:
-        return adapter.is_in_air()
-    except Exception:
+        r = adapter.is_in_air()
+        logger.debug(f"[motor] is_in_air={r}")
+        return r
+    except Exception as e:
+        logger.warning(f"[motor] is_in_air error: {e}")
         return False
 
 
@@ -44,9 +56,35 @@ def _check_armed() -> bool:
     if adapter is None:
         return False
     try:
-        return adapter.is_armed()
-    except Exception:
+        r = adapter.is_armed()
+        logger.debug(f"[motor] is_armed={r}")
+        return r
+    except Exception as e:
+        logger.warning(f"[motor] is_armed error: {e}")
         return False
+
+
+def _log_state(adapter, label: str = ""):
+    """打印飞行器完整状态快照（世界坐标）。"""
+    try:
+        pos = adapter.get_position()
+        st = adapter.get_state()
+        vel = st.velocity if st else None
+        alt = None
+        if hasattr(adapter, '_get_altitude'):
+            try:
+                alt = adapter._get_altitude()
+            except Exception:
+                pass
+        if alt is None and pos:
+            alt = abs(pos.down)
+        logger.info(
+            f"[STATE {label}] 位置({pos.north:.1f},{pos.east:.1f},{pos.down:.1f}) "
+            f"alt={alt:.1f}m armed={st.armed} in_air={st.in_air} "
+            f"mode={st.mode} vel={vel} [{adapter.name}]"
+        )
+    except Exception as e:
+        logger.warning(f"[STATE {label}] read fail: {e}")
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -67,21 +105,30 @@ class Takeoff(Skill):
         return True
 
     def execute(self, input_data: dict) -> SkillResult:
+        logger.info(f"[Takeoff] input={input_data}")
         if _check_in_air():
+            logger.warning("[Takeoff] already in air")
             return SkillResult(success=False, error_msg="无人机已在空中，无法起飞", logs=["❌ 前提检查失败: 已在空中"])
 
         altitude = input_data.get("altitude", 5.0)
         adapter = _get_adapter()
         if adapter is None:
             return SkillResult(success=False, error_msg="无仿真适配器", logs=["❌ 无适配器连接"])
-        
+
+        _log_state(adapter, "PRE-TAKEOFF")
+        logger.info(f"[Takeoff] adapter.takeoff({altitude}) [{adapter.name}]")
+        t0 = time.time()
         result = adapter.takeoff(altitude)
+        dt = round(time.time() - t0, 2)
+        logger.info(f"[Takeoff] ok={result.success} msg='{result.message}' {dt}s")
+        _log_state(adapter, "POST-TAKEOFF")
+
         return SkillResult(
             success=result.success,
-            output={"actual_altitude": result.data.get("altitude", 0), "takeoff_time": result.duration},
+            output={"actual_altitude": result.data.get("altitude", altitude), "takeoff_time": dt},
             error_msg=result.message if not result.success else "",
-            cost_time=result.duration,
-            logs=[f"takeoff({altitude}m): {result.message} [{adapter.name}]"],
+            cost_time=dt,
+            logs=[f"takeoff({altitude}m): {result.message} [{adapter.name}] {dt}s"],
         )
 
 
@@ -103,15 +150,24 @@ class Land(Skill):
         return True
 
     def execute(self, input_data: dict) -> SkillResult:
+        logger.info("[Land] called")
         if not _check_in_air():
+            logger.info("[Land] not in air, skip")
             return SkillResult(success=True, output={"landed_position": [], "land_time": 0.0},
                                cost_time=0.0, logs=["✅ 无人机已在地面，无需降落"])
 
         adapter = _get_adapter()
         if adapter is None:
             return SkillResult(success=False, error_msg="无仿真适配器")
-        
+
+        _log_state(adapter, "PRE-LAND")
+        logger.info(f"[Land] adapter.land() [{adapter.name}]")
+        t0 = time.time()
         result = adapter.land()
+        dt = round(time.time() - t0, 2)
+        logger.info(f"[Land] ok={result.success} msg='{result.message}' {dt}s")
+        _log_state(adapter, "POST-LAND")
+
         gps = adapter.get_gps()
         ned = adapter.get_position()
         pos = [round(gps.lat,7), round(gps.lon,7), round(gps.alt,2)] if gps else None
@@ -119,10 +175,10 @@ class Land(Skill):
 
         return SkillResult(
             success=result.success,
-            output={"landed_position": pos, "ned": ned_l, "land_time": result.duration},
+            output={"landed_position": pos, "ned": ned_l, "land_time": dt},
             error_msg=result.message if not result.success else "",
-            cost_time=result.duration,
-            logs=[f"land: {result.message} [{adapter.name}]"],
+            cost_time=dt,
+            logs=[f"land: {result.message} [{adapter.name}] {dt}s"],
         )
 
 
@@ -132,14 +188,14 @@ class Land(Skill):
 
 class FlyTo(Skill):
     name = "fly_to"
-    description = "底层移动技能：飞到指定NED坐标。down负值=高度，如down=-80表示80m高。⚠️使用前必须先get_position！高度低于50m会被自动修正到80m。"
+    description = "底层移动技能：飞到指定AirSim世界坐标。z越负越高，地面z≈-13。⚠️使用前必须先get_position！"
     skill_type = "hard"
     robot_type = ["UAV"]
     preconditions = []
     cost = 3.0
     input_schema = {
-        "target_position": "[north, east, down]，NED坐标。down=-80=80m高。⚠️高度<50m会被自动修正！先get_position再决定高度！",
-        "speed": "float，飞行速度 m/s，默认 8.0",
+        "target_position": "[x, y, z] AirSim世界坐标。z越负越高，地面z≈-13。z=-43表示离地30m。先get_position再决定坐标！",
+        "speed": "float，飞行速度 m/s，默认 15.0，⚠️ 必须传 speed=15，不要用低速度",
     }
     output_schema = {"arrived_position": "[n, e, d]", "distance_traveled": "float", "altitude": "float", "start_position": "[n, e, d]"}
 
@@ -147,45 +203,53 @@ class FlyTo(Skill):
         return True
 
     def execute(self, input_data: dict) -> SkillResult:
-        target = input_data.get("target_position", [0, 0, -80])
-        speed = input_data.get("speed", 8.0)
+        target = input_data.get("target_position", [0, 0, -43])
+        speed = max(float(input_data.get("speed", 15.0)), 15.0)  # 最低 15 m/s
+        logger.info(f"[FlyTo] target={target} speed={speed}")
+
         adapter = _get_adapter()
         if adapter is None:
             return SkillResult(success=False, error_msg="无仿真适配器")
         
         pos = adapter.get_position()
-        current_alt = abs(pos.down)
-        
+
+        # 直接使用世界坐标 [x, y, z]
         n, e = float(target[0]), float(target[1])
-        d = float(target[2]) if len(target) > 2 else -80.0
-        
-        # down 正值=地下，修正
-        if d > 0:
-            d = -d
-        
-        # 高度安全：< 50m 自动调到 80m
-        target_alt = abs(d)
-        height_corrected = False
-        if target_alt < 50:
-            logger.warning(f"fly_to: 目标高度{target_alt:.0f}m不安全，自动调整到80m")
-            d = -80.0
-            target_alt = 80.0
-            height_corrected = True
-        
-        logger.info(f"fly_to: ({pos.north:.1f},{pos.east:.1f},alt={current_alt:.0f}m) → ({n},{e},alt={target_alt:.0f}m)")
-        
+        d = float(target[2]) if len(target) > 2 else -43.0
+
+        # 获取离地高度用于日志
+        if hasattr(adapter, '_get_altitude'):
+            current_alt = adapter._get_altitude()
+        else:
+            current_alt = abs(pos.down)
+
+        horiz = math.sqrt((n - pos.north)**2 + (e - pos.east)**2)
+        logger.info(
+            f"[FlyTo] from 世界({pos.north:.1f},{pos.east:.1f},{pos.down:.1f}) "
+            f"→ 世界({n:.1f},{e:.1f},{d:.1f}) horiz={horiz:.1f}m"
+        )
+        _log_state(adapter, "PRE-FLYTO")
+
+        t0 = time.time()
         result = adapter.fly_to_ned(n, e, d, speed)
+        dt = round(time.time() - t0, 2)
 
         final_pos = adapter.get_position()
-        final_alt = abs(final_pos.down)
-        dist = ((final_pos.north - pos.north)**2 + (final_pos.east - pos.east)**2) ** 0.5
-
-        msg = result.message
-        if height_corrected and result.success:
-            msg = f"已到达，高度从{target_alt:.0f}m（你给的值不安全，已自动修正到80m）"
+        if hasattr(adapter, '_get_altitude'):
+            final_alt = adapter._get_altitude()
+        else:
+            final_alt = abs(final_pos.down)
+        dist = math.sqrt((final_pos.north - pos.north)**2 + (final_pos.east - pos.east)**2)
+        err = math.sqrt((final_pos.north - n)**2 + (final_pos.east - e)**2 + (final_pos.down - d)**2)
+        logger.info(
+            f"[FlyTo] ok={result.success} msg='{result.message}' "
+            f"final=世界({final_pos.north:.1f},{final_pos.east:.1f},{final_pos.down:.1f}) "
+            f"err={err:.1f}m dist={dist:.1f}m {dt}s"
+        )
+        _log_state(adapter, "POST-FLYTO")
 
         # 障碍物阻挡：在 output 中包含详细信息供 LLM 重规划
-        if not result.success and '障碍物' in result.message:
+        if not result.success and ('障碍' in result.message or 'Obstacle' in result.message):
             obstacle_info = getattr(adapter, '_last_obstacle_info', {})
             return SkillResult(
                 success=False,
@@ -195,11 +259,11 @@ class FlyTo(Skill):
                     'obstacle_distance': obstacle_info.get('front_dist', 0),
                     'current_position': [round(final_pos.north, 1), round(final_pos.east, 1), round(final_pos.down, 1)],
                     'original_target': [n, e, d],
-                    'suggestion': '建议: 1) change_altitude 升高绕过 2) fly_relative 横向避开 3) 重新规划路线',
+                    'suggestion': '建议: 1) change_altitude 升高绕过 2) fly_relative 横向避开',
                 },
                 error_msg=result.message,
-                cost_time=result.duration,
-                logs=[f"fly_to: 障碍物阻挡 {result.message}"],
+                cost_time=dt,
+                logs=[f"fly_to: 障碍 {result.message}"],
             )
 
         return SkillResult(
@@ -209,11 +273,11 @@ class FlyTo(Skill):
                 "arrived_position": [round(final_pos.north, 1), round(final_pos.east, 1), round(final_pos.down, 1)],
                 "distance_traveled": round(dist, 1),
                 "altitude": round(final_alt, 1),
-                "height_corrected": height_corrected,
+                "error_to_target": round(err, 1),
             },
-            error_msg=msg if not result.success else "",
-            cost_time=result.duration,
-            logs=[f"fly_to ({n},{e}) alt={final_alt:.0f}m: {msg}"],
+            error_msg=result.message if not result.success else "",
+            cost_time=dt,
+            logs=[f"fly_to ({n:.0f},{e:.0f},{d:.0f}) alt={final_alt:.0f}m err={err:.1f}m: {result.message} [{adapter.name}] {dt}s"],
         )
 
 
@@ -235,23 +299,33 @@ class Hover(Skill):
         return True
 
     def execute(self, input_data: dict) -> SkillResult:
+        logger.info(f"[Hover] input={input_data}")
         if not _check_in_air():
+            logger.warning("[Hover] not in air")
             return SkillResult(success=False, error_msg="无人机不在空中，无法悬停", logs=["❌ 前提检查失败: 不在空中"])
 
-        duration = input_data.get("duration", 5.0)
+        duration = float(input_data.get("duration", 5.0))
         adapter = _get_adapter()
         if adapter is None:
             return SkillResult(success=False, error_msg="无仿真适配器")
-        
+
+        _log_state(adapter, "PRE-HOVER")
+        logger.info(f"[Hover] adapter.hover({duration}) [{adapter.name}]")
+        t0 = time.time()
         result = adapter.hover(duration)
-        pos = result.data.get("position", [0, 0, 0])
-        
+        dt = round(time.time() - t0, 2)
+        logger.info(f"[Hover] ok={result.success} msg='{result.message}' {dt}s")
+        _log_state(adapter, "POST-HOVER")
+
+        pos = adapter.get_position()
+        pos_l = [round(pos.north, 2), round(pos.east, 2), round(pos.down, 2)] if pos else [0, 0, 0]
+
         return SkillResult(
             success=result.success,
-            output={"hover_position": pos, "actual_duration": result.duration},
+            output={"hover_position": pos_l, "actual_duration": dt},
             error_msg=result.message if not result.success else "",
-            cost_time=result.duration,
-            logs=[f"hover({duration}s): {result.message} [{adapter.name}]"],
+            cost_time=dt,
+            logs=[f"hover({duration}s): {result.message} [{adapter.name}] {dt}s"],
         )
 
 
@@ -274,28 +348,56 @@ class ChangeAltitude(Skill):
 
     def execute(self, input_data: dict) -> SkillResult:
         altitude = float(input_data.get("altitude", 10.0))
+        logger.info(f"[ChangeAltitude] target_alt={altitude}")
         adapter = _get_adapter()
         if adapter is None:
             return SkillResult(success=False, error_msg="无仿真适配器")
 
-        # 获取当前位置
-        pos = adapter.get_position()
-        current_alt = abs(pos.down)
-        target_down = -abs(altitude)
-        result = adapter.fly_to_ned(pos.north, pos.east, target_down, speed=5.0)
+        # 优先用 _get_altitude() 获取离地高度
+        if hasattr(adapter, '_get_altitude'):
+            current_alt = adapter._get_altitude()
+        else:
+            pos = adapter.get_position()
+            current_alt = abs(pos.down)
 
+        logger.info(f"[ChangeAltitude] {current_alt:.1f}m → {altitude:.1f}m")
+        _log_state(adapter, "PRE-CHALT")
+
+        t0 = time.time()
+        # 优先用 change_altitude_relative（delta正=升高，负=下降）
+        delta = altitude - current_alt
+        if hasattr(adapter, 'change_altitude_relative'):
+            logger.info(f"[ChangeAltitude] using adapter.change_altitude_relative(delta={delta:.1f})")
+            result = adapter.change_altitude_relative(delta, speed=8.0)
+        else:
+            logger.info(f"[ChangeAltitude] fallback: fly_to_ned for vertical")
+            pos = adapter.get_position()
+            # 计算目标 z（世界坐标）
+            ground_z = getattr(adapter, '_ground_z', -13.0)
+            target_z = ground_z - altitude
+            result = adapter.fly_to_ned(pos.north, pos.east, target_z, speed=15.0)
+        dt = round(time.time() - t0, 2)
+
+        if hasattr(adapter, '_get_altitude'):
+            final_alt = adapter._get_altitude()
+        else:
+            final_pos = adapter.get_position()
+            final_alt = abs(final_pos.down)
         final_pos = adapter.get_position()
+        logger.info(f"[ChangeAltitude] ok={result.success} {current_alt:.1f}→{final_alt:.1f}m {dt}s")
+        _log_state(adapter, "POST-CHALT")
+
         return SkillResult(
             success=result.success,
             error_msg=result.message if not result.success else "",
             output={
                 "previous_altitude": round(current_alt, 1),
                 "target_altitude": altitude,
-                "current_altitude": round(abs(final_pos.down), 1),
+                "current_altitude": round(final_alt, 1),
                 "current_position": [round(final_pos.north, 1), round(final_pos.east, 1), round(final_pos.down, 1)],
             },
-            cost_time=0,
-            logs=[f"change_altitude: {current_alt:.0f}m → {abs(final_pos.down):.0f}m"],
+            cost_time=dt,
+            logs=[f"change_altitude: {current_alt:.0f}m → {final_alt:.0f}m [{adapter.name}] {dt}s"],
         )
 
 
@@ -305,7 +407,7 @@ class ChangeAltitude(Skill):
 
 class GetPosition(Skill):
     name = "get_position"
-    description = "获取无人机当前的 GPS 坐标和 NED 局部坐标。"
+    description = "获取无人机当前的 AirSim 世界坐标和 GPS 坐标。"
     skill_type = "hard"
     robot_type = ["UAV"]
     preconditions = []
@@ -317,23 +419,46 @@ class GetPosition(Skill):
         return True
 
     def execute(self, input_data: dict) -> SkillResult:
+        logger.debug("[GetPosition] called")
         adapter = _get_adapter()
         if adapter is None:
             return SkillResult(success=False, error_msg="无仿真适配器")
         
-        start = time.time()
+        t0 = time.time()
         gps = adapter.get_gps()
-        ned = adapter.get_position()
-        elapsed = round(time.time() - start, 2)
+        pos = adapter.get_position()
+        state = adapter.get_state()
+        dt = round(time.time() - t0, 3)
         
-        gps_d = {"lat": round(gps.lat, 7), "lon": round(gps.lon, 7), "alt": round(gps.alt, 2)} if gps else None
-        ned_l = [round(ned.north, 2), round(ned.east, 2), round(ned.down, 2)]
+        gps_d = {"lat": round(gps.lat, 7), "lon": round(gps.lon, 7), "alt": round(gps.alt, 2)} if gps and gps.lat != 0 else None
+        # 世界坐标 [x, y, z]
+        world_pos = [round(pos.north, 2), round(pos.east, 2), round(pos.down, 2)]
+        vel = state.velocity if state else None
+        hdg = round(state.heading_deg, 1) if state else None
+
+        # 离地高度：使用 adapter._get_altitude()
+        if hasattr(adapter, '_get_altitude'):
+            altitude = adapter._get_altitude()
+        else:
+            altitude = abs(pos.down)
+
+        ground_z = getattr(adapter, '_ground_z', None)
+
+        logger.info(f"[GetPosition] 世界坐标={world_pos} 离地高度={altitude:.1f}m GPS={gps_d} vel={vel} [{adapter.name}]")
         
         return SkillResult(
             success=True,
-            output={"gps": gps_d, "ned": ned_l},
-            cost_time=elapsed,
-            logs=[f"位置: GPS={gps_d}, NED={ned_l} [{adapter.name}]"],
+            output={
+                "gps": gps_d,
+                "position": world_pos,   # AirSim世界坐标 [x, y, z]
+                "ned": world_pos,        # 兼容旧字段名
+                "altitude": round(altitude, 1),   # 离地高度（正数）
+                "ground_z": round(ground_z, 2) if ground_z is not None else None,
+                "heading": hdg,
+                "velocity": vel,
+            },
+            cost_time=dt,
+            logs=[f"位置: 世界坐标={world_pos} 离地高度={altitude:.1f}m [{adapter.name}]"],
         )
 
 
@@ -355,18 +480,21 @@ class GetBattery(Skill):
         return True
 
     def execute(self, input_data: dict) -> SkillResult:
+        logger.debug("[GetBattery] called")
         adapter = _get_adapter()
         if adapter is None:
             return SkillResult(success=False, error_msg="无仿真适配器")
         
-        start = time.time()
+        t0 = time.time()
         v, pct = adapter.get_battery()
-        elapsed = round(time.time() - start, 2)
+        dt = round(time.time() - t0, 3)
+
+        logger.info(f"[GetBattery] {v:.1f}V {pct:.0%} [{adapter.name}]")
         
         return SkillResult(
             success=True,
             output={"voltage_v": round(v, 2), "remaining_percent": round(pct, 2)},
-            cost_time=elapsed,
+            cost_time=dt,
             logs=[f"电池: {v:.1f}V, {pct:.0%} [{adapter.name}]"],
         )
 
@@ -389,25 +517,30 @@ class ReturnToLaunch(Skill):
         return True
 
     def execute(self, input_data: dict) -> SkillResult:
+        logger.info("[ReturnToLaunch] called")
         adapter = _get_adapter()
         if adapter is None:
             return SkillResult(success=False, error_msg="无仿真适配器")
-        
+
+        _log_state(adapter, "PRE-RTL")
+        t0 = time.time()
         result = adapter.return_to_launch()
+        dt = round(time.time() - t0, 2)
+        logger.info(f"[ReturnToLaunch] ok={result.success} msg='{result.message}' {dt}s")
+        _log_state(adapter, "POST-RTL")
+
         return SkillResult(
             success=result.success,
-            output={"rtl_time": result.duration},
+            output={"rtl_time": dt},
             error_msg=result.message if not result.success else "",
-            cost_time=result.duration,
-            logs=[f"RTL: {result.message} [{adapter.name}]"],
+            cost_time=dt,
+            logs=[f"RTL: {result.message} [{adapter.name}] {dt}s"],
         )
 
 
 # ══════════════════════════════════════════════════════════════════════════════
 #  FlyRelative — 相对移动 (前后左右上下, 单位: 米)
 # ══════════════════════════════════════════════════════════════════════════════
-
-import math
 
 class FlyRelative(Skill):
     name = "fly_relative"
@@ -424,7 +557,7 @@ class FlyRelative(Skill):
         "forward": "float, 向前(+)或向后(-), 单位米, 默认0",
         "right": "float, 向右(+)或向左(-), 单位米, 默认0",
         "up": "float, 向上(+)或向下(-), 单位米, 默认0",
-        "speed": "float, 飞行速度 m/s, 默认2.0",
+        "speed": "float, 飞行速度 m/s, 默认 15.0，⚠️ 必须传 speed=15",
     }
     output_schema = {
         "start_position": "[n, e, d]",
@@ -436,6 +569,7 @@ class FlyRelative(Skill):
         return True
 
     def execute(self, input_data: dict) -> SkillResult:
+        logger.info(f"[FlyRelative] input={input_data}")
         if not _check_in_air():
             return SkillResult(
                 success=False,
@@ -450,7 +584,7 @@ class FlyRelative(Skill):
         fwd = float(input_data.get("forward", 0))
         rgt = float(input_data.get("right", 0))
         up = float(input_data.get("up", 0))
-        speed = float(input_data.get("speed", 2.0))
+        speed = max(float(input_data.get("speed", 15.0)), 15.0)  # 最低 15 m/s
 
         # ── LiDAR 前置障碍检测 ──
         MIN_SAFE_DIST = 3.0  # 米
@@ -464,12 +598,10 @@ class FlyRelative(Skill):
                     h_count = scan.get("count", 360)
                     v_count = scan.get("vertical_count", 1)
                     range_max = scan.get("range_max", 100)
-                    # 取中间层 (水平面) 的数据
                     mid_layer = v_count // 2
                     h_ranges = ranges[mid_layer * h_count : (mid_layer + 1) * h_count]
-                    # 判断目标方向的扇区 (前后左右各取 ±30° 扇区)
                     blocked_dirs = []
-                    sector_size = max(1, h_count // 12)  # 30° = 360°/12
+                    sector_size = max(1, h_count // 12)
                     sectors = {
                         "forward": 0,
                         "right": h_count // 4,
@@ -487,46 +619,42 @@ class FlyRelative(Skill):
                         if min_r < MIN_SAFE_DIST:
                             blocked_dirs.append((dir_name, min_r))
 
-                    # 检查要飞的方向是否有障碍
                     move_dirs = []
                     if fwd > 0: move_dirs.append("forward")
                     if fwd < 0: move_dirs.append("backward")
                     if rgt > 0: move_dirs.append("right")
                     if rgt < 0: move_dirs.append("left")
 
-                    for d in move_dirs:
+                    for d_name in move_dirs:
                         for bd, br in blocked_dirs:
-                            if d == bd:
-                                logger.warning(f"fly_relative: {d} 方向障碍物 {br:.1f}m < {MIN_SAFE_DIST}m, 拒绝执行")
+                            if d_name == bd:
+                                logger.warning(f"[FlyRelative] {d_name} blocked at {br:.1f}m < {MIN_SAFE_DIST}m")
                                 return SkillResult(
                                     success=False,
-                                    error_msg=f"{d} 方向检测到障碍物 ({br:.1f}m), 距离不足 {MIN_SAFE_DIST}m, 请更换方向或先升高",
-                                    logs=[f"fly_relative 障碍检测: {d} 方向 {br:.1f}m, 安全距离 {MIN_SAFE_DIST}m"],
+                                    error_msg=f"{d_name} 方向检测到障碍物 ({br:.1f}m), 距离不足 {MIN_SAFE_DIST}m",
+                                    logs=[f"fly_relative 障碍: {d_name} {br:.1f}m"],
                                 )
         except Exception as e:
-            logger.debug(f"fly_relative 障碍检测跳过: {e}")
+            logger.debug(f"[FlyRelative] obstacle check skip: {e}")
 
         # 获取当前位置和航向
         pos = adapter.get_position()
         state = adapter.get_state()
         heading_deg = state.heading_deg if hasattr(state, 'heading_deg') else 0
 
-        start_ned = [round(pos.north, 2), round(pos.east, 2), round(pos.down, 2)]
+        start_ned = [round(pos.north, 2), round(pos.east, 2), round(pos.down, 2)]  # 世界坐标
         heading_rad = math.radians(heading_deg)
 
-        # Body frame → NED: 根据航向旋转
-        #   前(fwd) 和 右(rgt) 转换为 北(dn) 和 东(de)
+        # Body frame → NED
         dn = fwd * math.cos(heading_rad) - rgt * math.sin(heading_rad)
         de = fwd * math.sin(heading_rad) + rgt * math.cos(heading_rad)
-        dd = -up  # NED 的 down 是正, 上是负
+        dd = -up
 
         target_n = pos.north + dn
         target_e = pos.east + de
         target_d = pos.down + dd
-
         distance = math.sqrt(dn**2 + de**2 + dd**2)
 
-        # 构造方向描述
         dirs = []
         if fwd > 0: dirs.append(f"前{fwd:.0f}m")
         elif fwd < 0: dirs.append(f"后{-fwd:.0f}m")
@@ -536,23 +664,30 @@ class FlyRelative(Skill):
         elif up < 0: dirs.append(f"下{-up:.0f}m")
         dir_str = "+".join(dirs) if dirs else "原地"
 
-        logger.info(f"fly_relative: {dir_str} (heading={heading_deg:.0f}°) → NED({target_n:.1f},{target_e:.1f},{target_d:.1f})")
+        logger.info(f"[FlyRelative] {dir_str} hdg={heading_deg:.0f}° → 世界({target_n:.1f},{target_e:.1f},{target_d:.1f})")
+        _log_state(adapter, "PRE-FLYREL")
 
+        t0 = time.time()
         result = adapter.fly_to_ned(target_n, target_e, target_d, speed)
-        final = result.data.get("position", [target_n, target_e, target_d])
+        dt = round(time.time() - t0, 2)
+
+        fp = adapter.get_position()
+        end_ned = [round(fp.north, 2), round(fp.east, 2), round(fp.down, 2)]
+        logger.info(f"[FlyRelative] ok={result.success} msg='{result.message}' end={end_ned} {dt}s")
+        _log_state(adapter, "POST-FLYREL")
 
         return SkillResult(
             success=result.success,
             output={
                 "start_position": start_ned,
-                "end_position": [round(x, 2) for x in final],
+                "end_position": end_ned,
                 "distance": round(distance, 2),
                 "direction": dir_str,
                 "heading": round(heading_deg, 1),
             },
             error_msg=result.message if not result.success else "",
-            cost_time=result.duration,
-            logs=[f"fly_relative {dir_str}: {result.message} [{adapter.name}]"],
+            cost_time=dt,
+            logs=[f"fly_relative {dir_str}: {result.message} [{adapter.name}] {dt}s"],
         )
 
 
@@ -582,6 +717,7 @@ class LookAround(Skill):
         return True
 
     def execute(self, input_data: dict) -> SkillResult:
+        logger.info(f"[LookAround] input={input_data}")
         adapter = _get_adapter()
         if adapter is None:
             return SkillResult(success=False, error_msg="无仿真适配器")
@@ -590,31 +726,44 @@ class LookAround(Skill):
         state = adapter.get_state()
         heading_start = state.heading_deg if hasattr(state, 'heading_deg') else 0
 
-        # 使用 body frame 速度控制: yaw_rate=45°/s, 8秒转一圈
         yaw_rate = 360.0 / duration
+        logger.info(f"[LookAround] yaw_rate={yaw_rate:.1f}°/s duration={duration}s hdg_start={heading_start:.0f}°")
+        _log_state(adapter, "PRE-LOOKAROUND")
         start_t = time.time()
 
         try:
             while time.time() - start_t < duration:
-                adapter.set_velocity_body(0, 0, 0, yaw_rate)
-                time.sleep(0.2)
+                # 用关键字参数，兼容 airsim_physics 和 mavsdk 不同签名
+                # mavsdk adapter 的 set_velocity_body 有 duration 参数会 sleep
+                if hasattr(adapter, 'name') and 'mavsdk' in adapter.name.lower():
+                    adapter.set_velocity_body(0, 0, 0, duration=0.2, yaw_rate=yaw_rate)
+                else:
+                    adapter.set_velocity_body(0, 0, 0, yaw_rate=yaw_rate)
+                    time.sleep(0.2)
             # 停止旋转
-            adapter.set_velocity_body(0, 0, 0, 0)
-            time.sleep(0.5)
+            if hasattr(adapter, 'name') and 'mavsdk' in adapter.name.lower():
+                adapter.set_velocity_body(0, 0, 0, duration=0.5, yaw_rate=0)
+            else:
+                adapter.set_velocity_body(0, 0, 0, yaw_rate=0)
+                time.sleep(0.5)
         except Exception as e:
+            logger.error(f"[LookAround] error: {e}")
             return SkillResult(
                 success=False, error_msg=f"旋转失败: {e}",
                 cost_time=round(time.time() - start_t, 2),
             )
 
+        dt = round(time.time() - start_t, 2)
         state2 = adapter.get_state()
         heading_end = state2.heading_deg if hasattr(state2, 'heading_deg') else 0
+        logger.info(f"[LookAround] hdg {heading_start:.0f}°→{heading_end:.0f}° {dt}s")
+        _log_state(adapter, "POST-LOOKAROUND")
 
         return SkillResult(
             success=True,
             output={"heading_start": round(heading_start, 1), "heading_end": round(heading_end, 1)},
-            cost_time=round(time.time() - start_t, 2),
-            logs=[f"look_around: {heading_start:.0f}°→{heading_end:.0f}°, 持续{duration:.0f}s"],
+            cost_time=dt,
+            logs=[f"look_around: {heading_start:.0f}°→{heading_end:.0f}° {duration:.0f}s [{adapter.name}]"],
         )
 
 
@@ -649,6 +798,7 @@ class MarkLocation(Skill):
         return True
 
     def execute(self, input_data: dict) -> SkillResult:
+        logger.info(f"[MarkLocation] input={input_data}")
         adapter = _get_adapter()
         if adapter is None:
             return SkillResult(success=False, error_msg="无仿真适配器")
@@ -668,7 +818,7 @@ class MarkLocation(Skill):
         }
         MarkLocation._marks.append(mark)
 
-        logger.info(f"mark_location: #{mark['id']} '{label}' at NED={ned} [{priority}]")
+        logger.info(f"[MarkLocation] #{mark['id']} '{label}' NED={ned} [{priority}] [{adapter.name}]")
 
         return SkillResult(
             success=True,
@@ -732,7 +882,7 @@ class Observe(Skill):
         return True
 
     def execute(self, input_data: dict) -> SkillResult:
-        import time
+        logger.info(f"[Observe] input={input_data}")
         start = time.time()
 
         adapter = _get_adapter()
@@ -743,7 +893,6 @@ class Observe(Skill):
                 logs=["❌ observe: 无适配器连接"],
             )
 
-        # 尝试调用 adapter 的 get_image_base64 方法
         image_b64 = None
         source = "mock"
 
@@ -751,9 +900,10 @@ class Observe(Skill):
             try:
                 image_b64 = adapter.get_image_base64()
                 if image_b64:
-                    source = "airsim"
+                    source = adapter.name
+                    logger.info(f"[Observe] image captured from {source}, len={len(image_b64)}")
             except Exception as e:
-                logger.warning(f"observe: get_image_base64 失败: {e}")
+                logger.warning(f"[Observe] get_image_base64 error: {e}")
 
         elapsed = round(time.time() - start, 3)
         has_image = image_b64 is not None
@@ -807,13 +957,13 @@ class OrbitInspect(Skill):
     preconditions = []
     cost = 15.0
     input_schema = {
-        "center": "[north, east], 建筑中心 NED 坐标（米）",
+        "center": "[x, y], 建筑中心 AirSim世界坐标（米）",
         "radius": "float, 绕飞半径（米）, 即建筑外墙到航点的距离, 默认 25",
         "start_height": "float, 起始巡检高度（米）, 默认 20",
         "end_height": "float, 终止巡检高度（米）, 默认 80",
         "height_step": "float, 每层高度间隔（米）, 默认 15",
         "points_per_layer": "int, 每层航点数, 默认 8 (八边形)",
-        "speed": "float, 飞行速度 m/s, 默认 2.0",
+        "speed": "float, 飞行速度 m/s, 默认 15.0，⚠️ 必须传 speed=15",
         "focus": "str, VLM 重点关注内容, 默认 '检查窗户是否破损、裂纹、缺失，外墙是否有开裂或异常'",
     }
     output_schema = {
@@ -827,7 +977,7 @@ class OrbitInspect(Skill):
         return True
 
     def execute(self, input_data: dict) -> SkillResult:
-        import math
+        logger.info(f"[OrbitInspect] input={input_data}")
 
         center = input_data.get("center", [0, 0])
         radius = float(input_data.get("radius", 25))
@@ -835,7 +985,8 @@ class OrbitInspect(Skill):
         end_h = float(input_data.get("end_height", 80))
         h_step = float(input_data.get("height_step", 15))
         pts_per_layer = int(input_data.get("points_per_layer", 8))
-        speed = float(input_data.get("speed", 2.0))
+        speed = float(input_data.get("speed", 15.0))  # 强制最低
+        speed = max(speed, 15.0)
         focus = input_data.get("focus",
             "检查窗户是否破损、裂纹、缺失，外墙是否有开裂或异常")
 
@@ -864,7 +1015,9 @@ class OrbitInspect(Skill):
                      f"{len(layers)}层 ({start_h}-{end_h}m), 每层{pts_per_layer}点")
 
         for layer_idx, height in enumerate(layers):
-            target_down = -height  # NED: 负值 = 向上
+            # 世界坐标：target_z = ground_z - height
+            ground_z = getattr(adapter, '_ground_z', -13.0)
+            target_down = ground_z - height  # AirSim世界坐标，z越负越高
             logs.append(f"📐 第{layer_idx+1}层: 高度{height}m")
 
             for pt_idx in range(pts_per_layer):

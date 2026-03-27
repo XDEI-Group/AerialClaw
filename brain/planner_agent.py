@@ -18,7 +18,7 @@ LLM 输出格式（JSON）：
           "skill": "fly_to",
           "doc_path": "skills/fly_to/skill.md",
           "robot": "UAV_1",
-          "parameters": { "target_position": [10, 20, 30] }
+          "parameters": { "target_position": [10, 20, -43] }
         }
       ]
     }

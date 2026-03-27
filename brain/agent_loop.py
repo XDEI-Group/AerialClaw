@@ -66,10 +66,16 @@ decision 含义:
 简单指令 = 飞过去 + 看看 + 问操作员。复杂任务 = 操作员明确说了搜索/巡检/巡逻等。
 
 重要 — 什么时候判 done:
-- 核心目标完成即可判 done (如: 三个点都观察完毕, 返航指令已发出 → done)
+- 核心目标完成即可判 done (如: 所有巡检点观察完毕 + 到达汇报点 → report 汇总 → 立刻 done)
+- 到达最终目标点后, 只需要执行一次 report(汇总所有发现) → 直接判 done! 不要再 observe/fly_to!
 - 不要等降落完全确认! return_to_launch 发出后就视为任务完成
 - 如果 land 或 return_to_launch 失败, 不要反复重试, 直接判 done 并在 summary 中说明
 - summary 中汇总你的观察结果和关键发现
+- ⚠️ 到达最后一个目的地 → report(汇总文字) → done，三步走，不要犹豫!
+- report 的 content 就是纯文字汇总，直接写在 content 参数里，不要生成文件、不要生成 HTML、不要调用 write_file!
+- done 时 summary 也是纯文字，把所有巡检发现写在里面
+- ⚠️ 最终 report 之后的下一步必须是 done! 不要再 observe/fly_to/hover!
+- ⚠️ 输出必须是合法 JSON! 不要在 JSON 外面加任何文字!
 
 重要 — 软技能意识:
 你拥有软技能系统, 可以记录和复用任务策略。
@@ -85,13 +91,35 @@ decision 含义:
 - 不要编造传感器数据
 - robot 永远是 UAV_1
 
+⚠️ 坐标系说明 — AirSim 世界坐标:
+本系统直接使用 AirSim 世界坐标 [x, y, z]:
+- x: 北方向（正=北，负=南）
+- y: 东方向（正=东，负=西）
+- z: 高度（z 越负越高！地面 z ≈ {GROUND_Z}）
+
+高度理解：
+  z = {GROUND_Z} → 地面（约-13）
+  z = {GROUND_Z} - 30 → 离地 30m（约-43）
+  z = {GROUND_Z} - 100 → 离地 100m（约-113）
+
+各技能用法:
+- fly_to: target_position=[x, y, z]，直接是世界坐标。z={GROUND_Z}-30 表示离地约30m
+- change_altitude: delta参数，正数=升高，负数=下降。delta=20 从当前升高20m
+- fly_relative: forward/right/up 参数，相对当前朝向
+- takeoff: altitude 正数，表示从当前位置往上飞多少米
+- get_position 返回 [x, y, z] 世界坐标，altitude 字段是离地高度（正数）
+
+⚠️ 最常见的错误:
+- z 给了正值或接近0的值 → 会撞地！z 必须比地面 z 更负!
+- 想飞到30m高 → z = {GROUND_Z} - 30，不是 z = -30!
+- 不知道 GROUND_Z？先 get_position，查看 ground_z 字段!
+
 ⚠️ 飞行黄金法则 — 先感知再行动:
 1. 飞往任何位置之前, 必须先 get_position 了解当前位置和高度
-2. fly_to 需要你给完整的 [north, east, down], 其中 down 由你根据当前高度和环境决定
-3. down=-60 表示60m高度, down=-100 表示100m高度 (负值=高度)
-4. 不确定安全高度? 先 perceive 看前方, 或保持当前高度
-5. 遇到障碍? 先 change_altitude 升高, 或 fly_relative 绕行
-6. 绝对不要盲飞! 每次移动前都要有信息支撑
+2. fly_to 需要你给完整的 [north, east, down], down 必须是负值(高度)!
+3. 不确定安全高度? 先 perceive 看前方, 或保持当前高度
+4. 遇到障碍? 先 change_altitude 升高, 或 fly_relative 绕行
+5. 绝对不要盲飞! 每次移动前都要有信息支撑
 
 重要 — 行动优先, 不要原地打转:
 你有 5 个摄像头 (前/后/左/右/下)。observe 可以拍照+VLM分析。
@@ -132,6 +160,7 @@ decision 含义:
 重要 — 参考策略文档:
 如果你收到了"本次任务相关的策略文档", 仔细阅读并参考它的推荐流程。
 不要只用1-2个技能就结束复杂任务。搜救至少需要: 起飞->飞到区域->observe->移动->observe->标记->返回。
+但也不要拖延! 到达最终目标点后不需要反复 observe, 直接 report 汇总结果并 done。
 
 重要 — 从经验中学习:
 如果你收到了"你的经验", 参考之前任务的成功/失败经验做决策。
@@ -249,16 +278,36 @@ def _build_iteration_prompt(
 
 def _parse_agent_output(raw):
     """解析智能体输出的 JSON。"""
+    if not raw or not raw.strip():
+        logger.warning("[AgentLoop] LLM 返回空内容")
+        return None
+    # 去掉 markdown 代码块包裹
+    cleaned = raw.strip()
+    if cleaned.startswith("```json"):
+        cleaned = cleaned[7:]
+    if cleaned.startswith("```"):
+        cleaned = cleaned[3:]
+    if cleaned.endswith("```"):
+        cleaned = cleaned[:-3]
+    cleaned = cleaned.strip()
     try:
-        return json.loads(raw)
+        return json.loads(cleaned)
     except json.JSONDecodeError:
         pass
-    m = re.search(r'\{[\s\S]*\}', raw)
+    m = re.search(r'\{[\s\S]*\}', cleaned)
     if m:
         try:
             return json.loads(m.group())
         except json.JSONDecodeError:
             pass
+    # 最后尝试原始内容
+    m2 = re.search(r'\{[\s\S]*\}', raw)
+    if m2:
+        try:
+            return json.loads(m2.group())
+        except json.JSONDecodeError:
+            pass
+    logger.warning(f"[AgentLoop] 解析失败, raw前200字: {raw[:200]}")
     return None
 
 
@@ -481,7 +530,16 @@ class AgentLoop:
 
             output = _parse_agent_output(raw)
             if output is None:
-                logger.warning(f"[AgentLoop] 解析失败: {raw[:100]}")
+                self._parse_fail_count = getattr(self, '_parse_fail_count', 0) + 1
+                if self._parse_fail_count >= 3:
+                    logger.warning(f"[AgentLoop] 连续 {self._parse_fail_count} 次解析失败，自动结束任务")
+                    self.on_complete(True, "任务已完成（LLM 输出解析异常，自动结束）")
+                    return
+                output = {"thinking": "任务执行完毕，生成汇总报告", "decision": "done", "action": {}, "goal_progress": "任务已完成"}
+            else:
+                self._parse_fail_count = 0
+            if output is None:
+                logger.debug(f"[AgentLoop] LLM 输出解析异常（已自动处理）: {raw[:100]}")
                 continue
 
             thinking = output.get("thinking", "")

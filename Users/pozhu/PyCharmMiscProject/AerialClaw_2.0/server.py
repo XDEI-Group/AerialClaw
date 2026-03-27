@@ -44,8 +44,7 @@ _UI_DIST  = os.path.join(_BASE_DIR, "ui", "dist")
 app = Flask(__name__, static_folder=_UI_DIST, static_url_path="")
 app.config["SECRET_KEY"] = os.environ.get("FLASK_SECRET_KEY", "aerialclaw-dev")
 CORS(app, resources={r"/api/*": {"origins": "*"}, r"/socket.io/*": {"origins": "*"}})
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode="threading",
-                    allow_unsafe_werkzeug=True)
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode="threading")
 
 # ══════════════════════════════════════════════════════════════════════════════
 #  全局状态
@@ -270,12 +269,6 @@ def _try_connect_adapter():
                 conn_str = f"{host}:{port}"
                 state.push_log("info", f"Connecting to AirSim Physics adapter ({conn_str})...")
                 ok = init_adapter("airsim_physics", connection_str=conn_str, timeout=15)
-            elif sim_adapter == "mavsdk":
-                host = os.getenv("AIRSIM_HOST", "127.0.0.1")
-                port = os.getenv("AIRSIM_PORT", "41451")
-                conn_str = f"{host}:{port}"
-                state.push_log("info", f"Connecting to MAVSDK+AirSim hybrid adapter (AirSim={conn_str})...")
-                ok = init_adapter("mavsdk", connection_str=conn_str, timeout=20)
             elif sim_adapter == "mock":
                 state.push_log("info", "Using mock adapter (no hardware)...")
                 ok = init_adapter("mock", timeout=5)
@@ -348,7 +341,7 @@ def _start_telemetry_sync():
                         update["robots"]["UAV_1"]["battery"] = pct
                     if st.position_ned:
                         p = st.position_ned
-                        update["robots"]["UAV_1"]["position"] = [round(p.north, 2), round(p.east, 2), round(p.down, 2)]
+                        update["robots"]["UAV_1"]["position"] = [round(p.north, 2), round(p.east, 2), round(p.altitude, 2)]
                     # in_air 始终更新（执行期间 LLM 也需要知道飞行状态）
                     update["robots"]["UAV_1"]["in_air"] = st.in_air
                     if not state.is_executing:
@@ -519,7 +512,7 @@ def _start_airsim_camera_stream():
             # ── AirSim 深度图模拟 LiDAR（每5帧一次） ──
             _lidar_counter = getattr(_airsim_stream_loop, "_lc", 0) + 1
             _airsim_stream_loop._lc = _lidar_counter
-            if _lidar_counter % 15 != 0:
+            if _lidar_counter % 5 != 0:
                 time.sleep(0.05)
                 continue
             try:
@@ -595,11 +588,11 @@ def _start_airsim_camera_stream():
                 if fail_count < 2:
                     logger.warning(f"AirSim 深度图 LiDAR 模拟失败: {lidar_e}")
 
-            time.sleep(0.015)  # ~60 FPS target
+            time.sleep(0.05)  # ~20 FPS target (limited by RPC latency)
 
     t = threading.Thread(target=_airsim_stream_loop, daemon=True, name="airsim-camera-stream")
     t.start()
-    state.push_log("info", "📷 AirSim 摄像头流推送已启动 (~15 FPS)")
+    state.push_log("info", "📷 AirSim 摄像头流推送已启动 (~5 FPS)")
 
 
 def _start_sensor_bridge():
@@ -1443,8 +1436,6 @@ def on_ai_task(data):
             reg = state.robot_registries.get(state.current_robot)
 
             def on_thinking(iteration, output):
-                if output is None:
-                    output = {}
                 thinking = output.get("thinking", "")
                 decision = output.get("decision", "")
                 action = output.get("action", {})
@@ -1508,7 +1499,7 @@ def on_ai_task(data):
                 runtime=state.runtime,
                 world_model=state.world_model,
                 skill_registry=reg,
-                max_iterations=50,
+                max_iterations=15,
                 on_thinking=on_thinking,
                 on_action=on_action,
                 on_complete=on_complete,
@@ -1617,7 +1608,7 @@ def on_ai_chat(data):
         for rid, rd in world_state.get("robots", {}).items():
             pos = rd.get("position", [0, 0, 0])
             world_lines.append(
-                f"{rid}: 位置={pos}, 电量={rd.get('battery', '?')}%, "
+                f"{rid}: 位置 NED={pos}, 电量={rd.get('battery', '?')}%, "
                 f"状态={rd.get('status', '?')}, 在空中={rd.get('in_air', '?')}"
             )
         world_state_str = "\n".join(world_lines) if world_lines else "(无)"
@@ -1728,7 +1719,7 @@ def _generate_patrol_report(task, summary, final_result, success):
     h.append(".footer{text-align:center;color:#484f58;margin-top:40px;font-size:12px}")
     h.append("</style></head><body>")
 
-    status = "✅ 任务完成" if success else "任务未完成"
+    status = "✅ 任务完成" if success else "❌ 任务未完成"
     h.append(f"<h1>🚁 AerialClaw 巡检报告</h1>")
     h.append(f"<div class='meta'>")
     h.append(f"<span>状态: <b>{status}</b></span>")
@@ -1879,7 +1870,7 @@ def _run_agent_loop(goal, sid):
             runtime=state.runtime,
             world_model=state.world_model,
             skill_registry=reg,
-            max_iterations=50,
+            max_iterations=15,
             on_thinking=on_thinking,
             on_action=on_action,
             on_complete=on_complete,

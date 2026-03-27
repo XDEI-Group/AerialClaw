@@ -50,7 +50,7 @@ def generate_body_md(adapter=None, sensor_bridge=None, skill_registry=None):
     sections.append("\n## 运动能力\n")
     sections.append("- 类型: 多旋翼无人机 (Multirotor)")
     sections.append("- 坐标系: NED 本地坐标 (North-East-Down, 相对起飞点)")
-    sections.append("- 飞行速度: 建议 2-3 m/s, 最大约 5 m/s")
+    sections.append("- 飞行速度: 建议 10-15 m/s, 最大约 30 m/s")
     sections.append("- 旋转速度: 最大约 45 deg/s")
     sections.append("- 高度范围: 0-120m (受限于仿真环境)")
     sections.append("- 定位方式: IMU + 气压计惯性导航 (GPS 信号可能不可用)")
