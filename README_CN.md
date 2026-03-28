@@ -148,9 +148,7 @@
 
 ## 仿真验证环境
 
-目前已在双仿真后端中完成验证：
-
-### AirSim + OpenFly（上海城市场景）
+目前已在 **AirSim + OpenFly** 仿真环境（上海城市场景）中构建验证平台：
 
 <p align="center">
   <img src="assets/airsim_flight.gif" alt="AirSim 上海城市飞行" width="720" />
@@ -158,18 +156,10 @@
   <em>上海城市场景自主飞行 — AI 驱动的高楼间导航与实时感知</em>
 </p>
 
-### PX4 + Gazebo Harmonic
-
-<p align="center">
-  <img src="assets/gazebo_demo.gif" alt="PX4 Gazebo 城市救援" width="720" />
-  <br>
-  <em>PX4 SITL + Gazebo Harmonic — 城市救援场景，自定义 x500 传感器载荷</em>
-</p>
-
 | 组件 | 技术选型 |
 |------|----------|
-| 飞控系统 | AirSim SimpleFlight（API 控制）/ PX4 SITL（MAVSDK） |
-| 仿真环境 | UE4 + OpenFly AirSim（上海）/ Gazebo Harmonic（城市救援） |
+| 飞控系统 | AirSim SimpleFlight（API 控制） |
+| 仿真环境 | Unreal Engine 4 + OpenFly AirSim（上海城市场景） |
 | 传感器模型 | 前向摄像头 + 模拟 LiDAR（360°） |
 | 大模型 / 视觉模型 | GPT-4o（规划、感知、报告生成） |
 | 通信协议 | AirSim RPC（纯 Socket msgpack） |
