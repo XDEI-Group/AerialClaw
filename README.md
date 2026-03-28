@@ -414,9 +414,10 @@ AerialClaw/
 - [x] Hybrid deployment — edge-cloud planning with automatic failover
 - [x] Multi-platform clients — Python SDK, Arduino/ESP32, ROS2 bridge
 - [x] AirSim adapter — remote simulation connection support
+- [x] AirSim remote simulation validation — Shanghai urban scene autonomous flight verified
 
 ### Future Directions
-- [ ] AirSim remote simulation validation · Real drone porting · Sim2Real transfer
+- [ ] Real drone porting · Sim2Real transfer
 - [ ] Multi-agent collaboration · MCP standard interface · Cross-device shared learning
 
 ## Contribution
