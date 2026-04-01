@@ -62,7 +62,7 @@ def launch_demo(num_coordinators: int = 2, drones_per_coordinator: int = 2):
         coordinators.append(coord)
         time.sleep(0.5)
 
-    # 3. 启动无人机
+    # 3. 启动执行节点
     executors = []
     for i, coord in enumerate(coordinators):
         for j in range(drones_per_coordinator):
@@ -71,7 +71,7 @@ def launch_demo(num_coordinators: int = 2, drones_per_coordinator: int = 2):
                 port=port,
                 coordinator_url=f"http://127.0.0.1:{6100 + i}",
                 node_id=f"uav-{chr(65 + i)}{j + 1}",   # uav-A1, uav-A2, uav-B1, ...
-                name=f"无人机-{chr(65 + i)}{j + 1}",
+                name=f"设备-{chr(65 + i)}{j + 1}",
                 capabilities=["flight", "camera_5x", "lidar_2d", "search", "patrol"],
             )
             executor.start()
@@ -89,7 +89,7 @@ def launch_demo(num_coordinators: int = 2, drones_per_coordinator: int = 2):
         logger.info(f"  子节点:     {coord.node_info.node_id} (port {coord.node_info.port})")
         alive = coord.swarm.get_alive_children()
         for drone_id in alive:
-            logger.info(f"    └── 无人机: {drone_id}")
+            logger.info(f"    └── 设备: {drone_id}")
     logger.info("=" * 60)
     logger.info("")
 
@@ -105,7 +105,7 @@ def main():
     parser.add_argument("--node-id", type=str, default=None, help="节点 ID")
     parser.add_argument("--name", type=str, default=None, help="节点名称")
     parser.add_argument("--coordinators", type=int, default=2, help="[demo] 子节点数量")
-    parser.add_argument("--drones", type=int, default=2, help="[demo] 每个子节点的无人机数")
+    parser.add_argument("--drones", type=int, default=2, help="[demo] 每个子节点的执行设备数")
 
     args = parser.parse_args()
 

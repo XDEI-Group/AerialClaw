@@ -139,7 +139,7 @@ class Commander:
             if child:
                 children_info.append(f"- {cid} (名称: {child.name}, 能力: {child.capabilities}, 下属: {child.children})")
 
-        prompt = f"""你是无人机集群的指挥官。你需要将一个任务分解为子任务，分配给不同的区域协调节点。
+        prompt = f"""你是一个设备集群的指挥官。你需要将一个任务分解为子任务，分配给不同的区域协调节点。
 
 全局任务：{instruction}
 
@@ -147,8 +147,8 @@ class Commander:
 {chr(10).join(children_info)}
 
 请为每个协调节点生成一条自然语言子任务指令。子任务应该：
-1. 根据各节点管辖的无人机能力合理分配
-2. 明确指定各节点负责的区域或目标
+1. 根据各节点管辖设备的能力合理分配
+2. 明确指定各节点负责的区域、目标或职责
 3. 包含完成标准和报告要求
 
 请严格按如下 JSON 格式输出（不要输出其他内容）：
@@ -191,7 +191,7 @@ class Commander:
         for coord_id, report_data in reports.items():
             reports_text += f"\n--- {coord_id} 的区域报告 ---\n{report_data.get('report', '无报告')}\n"
 
-        prompt = f"""你是无人机集群的指挥官。各区域协调节点已完成任务并提交了区域报告，你需要将它们融合为一份完整的全局任务报告。
+        prompt = f"""你是设备集群的指挥官。各区域协调节点已完成任务并提交了区域报告，你需要将它们融合为一份完整的全局任务报告。
 
 原始任务：{original_instruction}
 

@@ -25,7 +25,7 @@ class NodeRole(str, Enum):
     """节点角色"""
     COMMANDER = "commander"       # 主节点
     COORDINATOR = "coordinator"   # 子节点
-    EXECUTOR = "executor"         # 无人机执行节点
+    EXECUTOR = "executor"         # 执行节点
 
 
 class MessageType(str, Enum):

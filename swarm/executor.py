@@ -1,7 +1,7 @@
 """
-swarm/executor.py — 无人机执行节点（Executor）
+swarm/executor.py — 执行节点（Executor）
 
-最底层节点，每架无人机运行一个。
+最底层节点，每个执行设备运行一个。
 职责：
     1. 向子节点注册（上报自身能力）
     2. 接收子节点的自然语言任务指令
@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 
 class Executor:
     """
-    无人机执行节点。
+    设备执行节点。
     
     包装现有 AerialClaw 的 AgentLoop，接入集群通信。
     
@@ -91,7 +91,7 @@ class Executor:
         self._current_task_id = task_id
         self._is_executing = True
         status_msg = make_task_status(self.node_info.node_id, task_id,
-                                       TaskState.IN_PROGRESS, "开始执行飞行任务")
+                                       TaskState.IN_PROGRESS, "开始执行任务")
         self.swarm.send(self.coordinator_url, status_msg)
 
         # 在新线程中执行
@@ -100,7 +100,7 @@ class Executor:
         return {"status": "accepted", "task_id": task_id}
 
     def _execute_flight(self, task_id: str, instruction: str):
-        """执行飞行任务"""
+        """执行任务"""
         try:
             report_text = ""
 
@@ -112,11 +112,11 @@ class Executor:
             else:
                 # 无 AgentLoop 时模拟执行
                 logger.info(f"[{self.node_info.node_id}] Simulating task: {instruction[:60]}...")
-                time.sleep(5)  # 模拟飞行时间
+                time.sleep(5)  # 模拟执行时间
                 report_text = (
                     f"[{self.node_info.name}] 已完成任务。\n"
                     f"任务指令：{instruction}\n"
-                    f"执行结果：模拟飞行完成，未发现异常。"
+                    f"执行结果：模拟执行完成，未发现异常。"
                 )
 
             # 上报任务报告

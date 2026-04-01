@@ -1,7 +1,7 @@
 """
 swarm/node.py — 节点通信服务
 
-每个 AerialClaw 实例（无论是主节点、子节点还是无人机）都运行一个 SwarmNode，
+每个 AerialClaw 实例（无论是主节点、子节点还是执行节点）都运行一个 SwarmNode，
 负责：
     - 向上级注册
     - 接收和处理消息
@@ -32,7 +32,7 @@ class SwarmNode:
     
     每个 AerialClaw 实例启动一个 SwarmNode：
         - Commander: 监听子节点注册，分发任务，收集报告
-        - Coordinator: 向 Commander 注册，管理下属无人机，汇总区域报告
+        - Coordinator: 向 Commander 注册，管理下属执行节点，汇总区域报告
         - Executor: 向 Coordinator 注册，接收并执行任务
     """
 
