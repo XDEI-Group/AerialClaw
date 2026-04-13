@@ -18,6 +18,7 @@ import SkillPanel from './components/SkillPanel'
 import LogPanel from './components/LogPanel'
 import SensorPanel from './components/SensorPanel'
 import AiMonitorPanel from './components/AiMonitorPanel'
+import AiPanel from './components/AiPanel'
 import ModelConfig from './components/ModelConfig'
 import CockpitView from './components/CockpitView'
 import SkillEvolutionPanel from './components/SkillEvolutionPanel'
@@ -199,6 +200,19 @@ export default function App() {
                   />
                 </div>
               )}
+              {/* AI 面板：任务输入 + 对话 */}
+              <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+                <AiPanel
+                  mode={systemStatus.mode}
+                  isExecuting={systemStatus.is_executing}
+                  lastAiPlan={lastAiPlan}
+                  lastAiReport={lastAiReport}
+                  onSubmitTask={handleSubmitAiTask}
+                  onStop={stopExecution}
+                  chatHistory={chatHistory}
+                  onSendChat={sendChat}
+                />
+              </div>
               {/* 模型配置（可折叠） */}
               <div style={{ flexShrink: 0, borderBottom: '1px solid var(--border)' }}>
                 <div
