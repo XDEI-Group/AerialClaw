@@ -531,16 +531,21 @@ class AgentLoop:
             output = _parse_agent_output(raw)
             if output is None:
                 self._parse_fail_count = getattr(self, '_parse_fail_count', 0) + 1
+                logger.warning(
+                    "[AgentLoop] LLM 输出解析失败 %s/3，不得伪装成任务完成。raw=%r",
+                    self._parse_fail_count,
+                    (raw or "")[:300],
+                )
                 if self._parse_fail_count >= 3:
-                    logger.warning(f"[AgentLoop] 连续 {self._parse_fail_count} 次解析失败，自动结束任务")
-                    self.on_complete(True, "任务已完成（LLM 输出解析异常，自动结束）")
+                    msg = "任务中止：LLM 连续输出无法解析，未能生成可执行决策。"
+                    logger.error(f"[AgentLoop] 连续 {self._parse_fail_count} 次解析失败，任务失败结束")
+                    self.on_complete(False, msg)
+                    self._update_memory(False)
+                    self._safe_return()
                     return
-                output = {"thinking": "任务执行完毕，生成汇总报告", "decision": "done", "action": {}, "goal_progress": "任务已完成"}
+                continue
             else:
                 self._parse_fail_count = 0
-            if output is None:
-                logger.debug(f"[AgentLoop] LLM 输出解析异常（已自动处理）: {raw[:100]}")
-                continue
 
             thinking = output.get("thinking", "")
             decision = output.get("decision", "act")

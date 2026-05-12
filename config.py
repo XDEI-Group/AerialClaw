@@ -164,3 +164,12 @@ MODULE_CONFIG: dict[str, dict] = {
 
 # ── 4. Skill Paths ───────────────────────────────────────────
 SKILLS_ROOT: Path = Path(__file__).parent / "skills"
+
+# ── Runtime UI overrides ─────────────────────────────────────
+# ModelConfig.jsx edits are persisted in .aerialclaw_llm_config.json and
+# applied after bootstrap defaults/env vars are loaded.
+try:
+    from llm_config_store import load_runtime_config
+    load_runtime_config(__import__(__name__))
+except Exception as e:
+    print(f"[config] runtime LLM 配置加载失败，已使用默认配置: {e}")

@@ -46,6 +46,32 @@ sys.path.insert(0, str(Path(__file__).parent))
 import config as _cfg
 
 
+class LLMUserError(RuntimeError):
+    """Safe, user-facing LLM error.
+
+    message is suitable for UI display; detail keeps technical diagnostics for
+    logs without leaking raw provider responses or full URLs to users.
+    """
+
+    def __init__(self, message: str, detail: str = ""):
+        super().__init__(message)
+        self.message = message
+        self.detail = detail
+
+
+def _friendly_http_error(code: int, body: str, model: str) -> str:
+    body_l = (body or "").lower()
+    if code in (401, 403):
+        return "模型服务鉴权失败：请检查 API Key 是否正确，或该 Key 是否有权限访问当前模型。"
+    if code == 404 or "model_not_found" in body_l or "model" in body_l and "not found" in body_l:
+        return f"模型不可用：请检查模型名 `{model}` 是否存在，或当前渠道是否支持这个模型。"
+    if code == 429:
+        return "模型服务请求过于频繁或额度不足：请稍后重试，或切换到其他模型渠道。"
+    if code in (500, 502, 503, 504):
+        return "模型服务暂时不可用：请稍后重试，或切换到备用模型渠道。"
+    return f"模型服务返回错误 HTTP {code}：请检查渠道配置。"
+
+
 # ── LLMClient ────────────────────────────────────────────────────────────────
 
 class LLMClient:
@@ -172,12 +198,14 @@ class LLMClient:
 
         except urllib.error.HTTPError as e:
             body = e.read().decode("utf-8", errors="replace")
-            raise RuntimeError(
-                f"[LLMClient] HTTP {e.code} from {url}\n{body[:400]}"
+            raise LLMUserError(
+                _friendly_http_error(e.code, body, self._model),
+                detail=f"HTTP {e.code} from {url}: {body[:400]}",
             ) from e
         except urllib.error.URLError as e:
-            raise RuntimeError(
-                f"[LLMClient] 无法连接到 {url}：{e.reason}"
+            raise LLMUserError(
+                "无法连接模型服务：请检查 Base URL 是否正确、网络是否可达。",
+                detail=f"URLError from {url}: {e.reason}",
             ) from e
 
     def chat_with_tools(
@@ -283,16 +311,19 @@ class LLMClient:
 
         except urllib.error.HTTPError as e:
             body = e.read().decode("utf-8", errors="replace")
-            raise RuntimeError(
-                f"[LLMClient.chat_with_tools] HTTP {e.code} from {url}\n{body[:400]}"
+            raise LLMUserError(
+                _friendly_http_error(e.code, body, self._model),
+                detail=f"chat_with_tools HTTP {e.code} from {url}: {body[:400]}",
             ) from e
         except urllib.error.URLError as e:
-            raise RuntimeError(
-                f"[LLMClient.chat_with_tools] 无法连接到 {url}：{e.reason}"
+            raise LLMUserError(
+                "无法连接模型服务：请检查 Base URL 是否正确、网络是否可达。",
+                detail=f"chat_with_tools URLError from {url}: {e.reason}",
             ) from e
         except (json.JSONDecodeError, KeyError, IndexError) as e:
-            raise RuntimeError(
-                f"[LLMClient.chat_with_tools] 响应解析失败：{e}"
+            raise LLMUserError(
+                "模型服务响应格式异常：请确认该地址兼容 OpenAI Chat Completions 接口。",
+                detail=f"chat_with_tools parse failed: {e}",
             ) from e
 
     def __repr__(self) -> str:

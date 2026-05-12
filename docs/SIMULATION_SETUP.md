@@ -171,14 +171,17 @@ The X500 drone model includes:
 - **5 cameras**: front, rear, left, right, down (each 640×480, 30fps)
 - **3D LiDAR**: 360° × 16 layers = 5760 points per scan, 20m range
 
-Camera placement is defined in `config/camera_spawn.sdf`.
+Camera placement is defined in the bundled Gazebo model under `sim/models/x500_lidar_2d_cam/`.
+The Web console does **not** read Gazebo topics directly. `sim/gz_sensor_bridge.py`
+subscribes to Gazebo Transport camera/LiDAR topics and `server.py` forwards the
+latest frames to the UI via Socket.IO events (`sensor_cameras`, `sensor_lidar`).
 
 ### Customizing Sensors
 
 To modify the sensor configuration:
-1. Edit `config/camera_spawn.sdf` for camera positions
-2. Modify PX4 model SDF files for LiDAR parameters
-3. Update `sim/gz_sensor_bridge.py` if changing topic names
+1. Edit the PX4/Gazebo model SDF files under `sim/models/x500_lidar_2d_cam/`
+2. Modify the LiDAR model parameters in Gazebo/PX4 model files if needed
+3. Update topic names in `sim/gz_sensor_bridge.py` if your sensor/link names change
 
 ## Key PX4 Parameters
 
@@ -215,6 +218,38 @@ AerialClaw uses **NED** (North-East-Down):
 - Make sure Gazebo is running before PX4 (or use `make px4_sitl gz_x500`)
 - Check `PX4_GZ_STANDALONE=1` is set when using manual start
 - Verify DDS Agent is running: `MicroXRCEAgent udp4 -p 8888`
+
+### Web console camera/LiDAR panels show `NO SIGNAL`
+
+`gz topic -l` showing camera or LiDAR topics only proves Gazebo is publishing.
+AerialClaw still needs the backend sensor bridge to subscribe to those topics and
+push Socket.IO frames to the browser.
+
+Check the full path:
+
+```bash
+# Gazebo should expose camera/LiDAR topics
+gz topic -l | grep -Ei 'camera|image|lidar|scan'
+
+# Start backend with PX4+Gazebo adapter
+SIM_ADAPTER=px4 PX4_GZ_WORLD=urban_rescue PX4_SIM_MODEL=x500_lidar_2d_cam python server.py
+
+# After connecting the adapter, check bridge status
+curl http://localhost:5001/api/sensor/status
+```
+
+Expected backend log after the adapter connects:
+
+```text
+传感器桥接启动 (world=urban_rescue, model=x500_lidar_2d_cam_0)
+传感器数据推送线程已启动
+```
+
+If status says the bridge is unavailable:
+- install / expose Gazebo Harmonic Python bindings (`gz.transport13`, `gz.msgs10`)
+- verify `PX4_GZ_WORLD` matches your running world
+- verify `PX4_SIM_MODEL` matches the spawned model base name; AerialClaw appends `_0`
+- if you renamed links/sensors, update `sim/gz_sensor_bridge.py` topic templates
 
 ### MAVSDK connection fails
 - Start `mavsdk_server` separately, don't rely on auto-start

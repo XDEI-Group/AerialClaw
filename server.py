@@ -279,6 +279,10 @@ def _try_connect_adapter():
             elif sim_adapter == "mock":
                 state.push_log("info", "Using mock adapter (no hardware)...")
                 ok = init_adapter("mock", timeout=5)
+            elif sim_adapter == "gazebo_direct":
+                state.push_log("info", "Using Gazebo direct adapter (set_pose demo control)...")
+                conn_str = os.getenv("GAZEBO_DIRECT_CONNECTION", "")
+                ok = init_adapter("gazebo_direct", connection_str=conn_str, timeout=10)
             else:
                 state.push_log("info", "Connecting to PX4 adapter (MAVSDK)...")
                 ok = init_adapter("px4", connection_str="udp://:14540", timeout=10)
@@ -290,11 +294,15 @@ def _try_connect_adapter():
                 state.push_log("warn", f"Adapter degraded to: {adapter.name}")
             _start_telemetry_sync()
 
-            # AirSim 模式下启动摄像头流推送
+            # Start simulator-specific sensor streaming.
+            # AirSim frames are read via RPC; PX4+Gazebo frames/LiDAR are read
+            # from Gazebo Transport topics by sim.gz_sensor_bridge.
             if sim_adapter in ("airsim", "airsim_physics") and ok:
                 _start_airsim_camera_stream()
                 # 启动被动感知引擎
                 _start_passive_perception()
+            elif (sim_adapter in ("px4", "gazebo", "gz") or os.getenv("AERIALCLAW_FORCE_GZ_SENSOR_BRIDGE") == "1") and ok:
+                _start_sensor_bridge()
 
         except Exception as e:
             state.push_log("warn", f"Adapter unavailable: {e}, running in mock mode")
@@ -313,7 +321,7 @@ def _start_telemetry_sync():
         while state.initialized:
             try:
                 adapter = get_adapter()
-                if adapter and not adapter.is_connected:
+                if adapter and not adapter.is_connected():
                     # mavsdk_server 可能崩了，尝试自动重连
                     _reconnect_attempts += 1
                     wait = min(5 * _reconnect_attempts, _MAX_RECONNECT_INTERVAL)
@@ -327,7 +335,7 @@ def _start_telemetry_sync():
                         state.push_log("success", "✅ MAVSDK 自动重连成功")
                         _reconnect_attempts = 0
                     continue
-                if adapter and adapter.is_connected:
+                if adapter and adapter.is_connected():
                     _reconnect_attempts = 0
                     st = adapter.get_state()
                     update = {"robots": {"UAV_1": {}}}
@@ -1068,6 +1076,8 @@ def api_set_active_provider():
     if provider not in cfg.PROVIDERS:
         return jsonify({"ok": False, "msg": f"未知 provider: {provider}"}), 404
     cfg.ACTIVE_PROVIDER = provider
+    from llm_config_store import save_runtime_config
+    save_runtime_config(cfg)
     state.push_log("info", f"全局 LLM 已切换到: {provider} ({cfg.PROVIDERS[provider]['default_model']})")
     return jsonify({"ok": True, "active_provider": provider})
 
@@ -1089,7 +1099,9 @@ def api_set_module_config(module_name):
             return jsonify({"ok": False, "msg": f"未知 provider: {p}"}), 400
         cfg.MODULE_CONFIG[module_name]["provider"] = p
     if "model" in data:
-        cfg.MODULE_CONFIG[module_name]["model"] = data["model"]
+        cfg.MODULE_CONFIG[module_name]["model"] = data["model"] or None
+    from llm_config_store import save_runtime_config
+    save_runtime_config(cfg)
     resolved_p = cfg.MODULE_CONFIG[module_name].get("provider") or cfg.ACTIVE_PROVIDER
     resolved_m = cfg.MODULE_CONFIG[module_name].get("model") or cfg.PROVIDERS.get(resolved_p, {}).get("default_model", "")
     state.push_log("info", f"模块 {module_name} LLM 配置更新: {resolved_p}/{resolved_m}")
@@ -1116,10 +1128,15 @@ def api_add_provider():
     default_model = data.get("default_model", "").strip()
     timeout = data.get("timeout", 60)
 
-    if not name:
-        return jsonify({"ok": False, "msg": "name 不能为空"}), 400
+    try:
+        from llm_config_store import validate_provider_name
+        name = validate_provider_name(name)
+    except ValueError as e:
+        return jsonify({"ok": False, "msg": str(e)}), 400
     if not base_url:
         return jsonify({"ok": False, "msg": "base_url 不能为空"}), 400
+    if not (base_url.startswith("http://") or base_url.startswith("https://")):
+        return jsonify({"ok": False, "msg": "base_url 必须以 http:// 或 https:// 开头"}), 400
     if not default_model:
         return jsonify({"ok": False, "msg": "default_model 不能为空"}), 400
 
@@ -1131,6 +1148,8 @@ def api_add_provider():
         "default_model": default_model,
         "timeout": int(timeout),
     }
+    from llm_config_store import save_runtime_config
+    save_runtime_config(cfg)
     action = "新增" if is_new else "更新"
     state.push_log("success", f"{action} LLM 渠道: {name} ({default_model} @ {base_url})")
     return jsonify({"ok": True, "action": action, "name": name})
@@ -1145,6 +1164,8 @@ def api_delete_provider(name):
     if name == cfg.ACTIVE_PROVIDER:
         return jsonify({"ok": False, "msg": "不能删除当前激活的 provider"}), 400
     del cfg.PROVIDERS[name]
+    from llm_config_store import save_runtime_config
+    save_runtime_config(cfg)
     state.push_log("info", f"已删除 LLM 渠道: {name}")
     return jsonify({"ok": True, "name": name})
 
@@ -1661,7 +1682,8 @@ def on_ai_chat(data):
             _chat_histories[sid] = history[-40:]
 
         if result["type"] == "plan" and result["plan"] and state.mode == "ai":
-            # LLM 决定执行任务 — 启动自主 Agent 循环
+            # LLM 决定执行任务。若是本地单动作兜底计划，直接执行该
+            # plan，避免再进入依赖 LLM 的 AgentLoop 后因模型通道失败卡住。
             socketio.emit("ai_chat_reply", {
                 "ok": True,
                 "intent": "TASK",
@@ -1669,10 +1691,13 @@ def on_ai_chat(data):
                 "message": message,
             }, to=sid)
 
-            state.push_log("info", f"🤖 启动自主任务: {message}")
-
-            # 启动 AgentLoop
-            _run_agent_loop(message, sid)
+            if result.get("fallback") == "single_action":
+                state.push_log("info", f"🤖 执行本地单动作兜底计划: {message}")
+                _execute_plan_from_chat(message, result["plan"], sid)
+            else:
+                state.push_log("info", f"🤖 启动自主任务: {message}")
+                # 启动 AgentLoop
+                _run_agent_loop(message, sid)
         else:
             # 纯对话
             socketio.emit("ai_chat_reply", {
@@ -2119,7 +2144,7 @@ def on_velocity_control(data):
 
     from adapters.adapter_manager import get_adapter
     adapter = get_adapter()
-    if not adapter or not adapter.is_connected:
+    if not adapter or not adapter.is_connected():
         emit("velocity_result", {"ok": False, "error": "适配器未连接"})
         return
 
@@ -2132,7 +2157,7 @@ def on_velocity_control(data):
     if fwd == 0 and right == 0 and down == 0 and yaw == 0:
         result = adapter.stop_velocity()
     else:
-        result = adapter.set_velocity_body(fwd, right, down, yaw)
+        result = adapter.set_velocity_body(fwd, right, down, yaw_rate=yaw)
     emit("velocity_result", {"ok": result.success, "msg": result.message})
 
 
@@ -2144,7 +2169,7 @@ def on_get_telemetry():
         return
     from adapters.adapter_manager import get_adapter
     adapter = get_adapter()
-    if not adapter or not adapter.is_connected:
+    if not adapter or not adapter.is_connected():
         emit("telemetry", {})
         return
     try:
@@ -2378,6 +2403,7 @@ if __name__ == "__main__":
     init_thread = threading.Thread(target=_do_init, daemon=True)
     init_thread.start()
 
-    logger.info("AerialClaw 控制台服务启动于 http://localhost:5001")
+    server_port = int(os.getenv("AERIALCLAW_PORT", "5001"))
+    logger.info(f"AerialClaw 控制台服务启动于 http://localhost:{server_port}")
 
-    socketio.run(app, host="0.0.0.0", port=5001, debug=False, use_reloader=False, allow_unsafe_werkzeug=True)
+    socketio.run(app, host="0.0.0.0", port=server_port, debug=False, use_reloader=False, allow_unsafe_werkzeug=True)

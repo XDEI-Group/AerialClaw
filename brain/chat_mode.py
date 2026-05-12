@@ -237,6 +237,64 @@ def _detect_action_hallucination(text):
 #  主接口
 # ══════════════════════════════════════════════════════════════════════════════
 
+def _fallback_single_action_plan(user_input):
+    """Deterministic safety fallback when the LLM channel is unavailable.
+
+    Keep this intentionally narrow: only obvious one-shot control commands are
+    converted to plans. Complex tasks still need the planner LLM.
+    """
+    text = (user_input or "").strip().lower()
+    if not text:
+        return None
+
+    def plan(skill, parameters=None, reply="收到，正在执行。"):
+        return {
+            "type": "plan",
+            "text": reply,
+            "plan": [{
+                "step": 1,
+                "skill": skill,
+                "robot": "UAV_1",
+                "parameters": parameters or {},
+            }],
+        }
+
+    # Chinese / English one-shot commands. Avoid broad keywords like just "飞"
+    # because those may be complex navigation requests requiring planning.
+    if text in {"起飞", "起飞。", "takeoff", "take off"} or "起飞到" in text:
+        import re
+        altitude = 5.0
+        m = re.search(r"(\d+(?:\.\d+)?)\s*(?:米|m)?", text)
+        if m:
+            altitude = float(m.group(1))
+        return plan("takeoff", {"altitude": altitude}, f"收到，起飞到 {altitude:g} 米。")
+    if text in {"降落", "降落。", "land"}:
+        return plan("land", {}, "收到，开始降落。")
+    if text in {"悬停", "悬停。", "hover"}:
+        return plan("hover", {"duration": 5.0}, "收到，保持悬停。")
+    if text in {"返航", "返回起点", "return", "rtl", "return to launch"}:
+        return plan("return_to_launch", {}, "收到，返回起点。")
+
+    # Direct coordinate navigation fallback, e.g.
+    #   飞到坐标[-30, 40, -15]
+    #   fly to [-30,40,-15]
+    # Coordinates are AerialClaw NED [north, east, down].
+    if any(k in text for k in ("飞到", "前往", "移动到", "fly to", "go to")):
+        import re
+        m = re.search(
+            r"[\[（(]\s*(-?\d+(?:\.\d+)?)\s*[,，]\s*(-?\d+(?:\.\d+)?)\s*[,，]\s*(-?\d+(?:\.\d+)?)\s*[\]）)]",
+            text,
+        )
+        if m:
+            target = [float(m.group(i)) for i in range(1, 4)]
+            return plan(
+                "fly_to",
+                {"target_position": target, "speed": 15.0},
+                f"收到，飞到坐标 [{target[0]:g}, {target[1]:g}, {target[2]:g}]。",
+            )
+    return None
+
+
 def unified_chat(
     user_input,
     chat_history,
@@ -306,8 +364,18 @@ def unified_chat(
         return result
 
     except Exception as e:
-        logger.error("unified_chat 失败: %s", e)
-        return {"type": "chat", "text": f"通信异常: {e}", "plan": None}
+        safe_msg = getattr(e, "message", None) or "模型通道暂时不可用：请检查模型配置，或稍后重试。"
+        detail = getattr(e, "detail", "")
+        if detail:
+            logger.exception("unified_chat 失败: %s", detail)
+        else:
+            logger.exception("unified_chat 失败")
+        fallback = _fallback_single_action_plan(user_input)
+        if fallback:
+            fallback["text"] += "（LLM 通道暂不可用，已使用本地单动作兜底。）"
+            fallback["fallback"] = "single_action"
+            return fallback
+        return {"type": "chat", "text": safe_msg, "plan": None}
 
 
 # ══════════════════════════════════════════════════════════════════════════════

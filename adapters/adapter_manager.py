@@ -63,6 +63,11 @@ def _register_builtins():
         register_adapter("mavsdk", MavsdkAdapter)
     except ImportError:
         pass
+    try:
+        from adapters.gazebo_direct_adapter import GazeboDirectAdapter
+        register_adapter("gazebo_direct", GazeboDirectAdapter)
+    except ImportError:
+        pass
 
 _register_builtins()
 

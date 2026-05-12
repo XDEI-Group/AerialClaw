@@ -35,3 +35,10 @@ doctor/memory/backups/
 *.bak2
 *.bak3
 logs/
+
+# Runtime LLM config with API keys
+.aerialclaw_llm_config.json
+
+# Local development artifacts
+.venv*/
+Users/

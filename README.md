@@ -28,6 +28,7 @@ The project uses Markdown documents to define and maintain each agent's cognitiv
 
 ## 📢 Update
 
+- **(2026/5/12)** PX4+Gazebo Web console maintenance update — restored Gazebo camera/LiDAR streaming for the Web UI, added a Gazebo direct demo adapter for local simulation control, fixed cockpit velocity and telemetry synchronization issues, prevented LLM parsing failures from being reported as successful missions, added deterministic fallback plans for simple commands when the LLM channel is unavailable, and made runtime LLM provider/model settings persistent with safe user-facing error messages.
 - **(2026/3/24)** AerialClaw v2.0 updated — safety envelope, four-layer memory, universal device protocol, self-evolution engine, AirSim Shanghai city scene, autonomous city patrol demo, GPT-4o vision perception, real-time map update, Doctor agent adapter, WASD manual control, smooth interpolated flight.
 - **(2026/3/14)** AerialClaw v1.0 released — full agent loop, 12 hard skills, reflection engine, Web UI, PX4+Gazebo simulation.
 
