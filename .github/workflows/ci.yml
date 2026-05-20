@@ -54,9 +54,13 @@ jobs:
           docker run -d --name aerialclaw-ci -p 5001:5001 aerialclaw:ci
           for i in $(seq 1 30); do
             if curl -fsS http://127.0.0.1:5001/api/status 2>/dev/null; then
+              docker rm -f aerialclaw-ci
               exit 0
             fi
             sleep 1
           done
           docker logs aerialclaw-ci
+          docker rm -f aerialclaw-ci || true
           exit 1
+      - name: Validate Docker Compose reviewer path
+        run: docker compose config

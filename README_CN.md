@@ -177,109 +177,150 @@
 
 ## 安装与部署
 
-### 环境要求
+AerialClaw 提供三条可运行路径。第一次使用或评审时建议先跑 Docker mock；本地开发走 local mock；需要完整仿真时再走 PX4/Gazebo。
 
-- Python >= 3.10，Node.js >= 18
-- CMake >= 3.22
-- Git
+### 路径 1 — Docker mock 模式（推荐首次运行）
 
-### 第一步：克隆仓库
+这是最快的可复现演示路径。它**不需要** PX4、Gazebo、AirSim、GPU、真实无人机或 LLM API Key。
 
 ```bash
 git clone https://github.com/XDEI-Group/AerialClaw.git
 cd AerialClaw
+
+# 方式 A：Docker Compose
+docker compose up --build
+
+# 方式 B：普通 Docker
+docker build -t aerialclaw:review .
+docker run --rm -p 5001:5001 aerialclaw:review
 ```
 
-### 第二步：Python 环境
+另开终端验证：
 
 ```bash
+curl http://localhost:5001/api/status
+# 打开 http://localhost:5001
+```
+
+预期返回包含类似字段：
+
+```json
+{"initialized": true, "mode": "manual", "current_robot": "HOST_DEVICE"}
+```
+
+Docker 镜像刻意使用 `requirements-mock.txt`，定位是轻量评审镜像，不包含完整 PX4/Gazebo/AirSim 依赖。
+
+### 路径 2 — 本地 mock 模式（开发）
+
+适合本地改代码、不启动仿真器时使用。
+
+```bash
+git clone https://github.com/XDEI-Group/AerialClaw.git
+cd AerialClaw
+
 python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
-```
 
-### 第三步：构建 Web 界面
-
-```bash
 cd ui
 npm install
 npm run build
 cd ..
-```
 
-### 第四步：配置 LLM
-
-```bash
-cp .env.example .env
-```
-
-编辑 `.env`，填入你的 LLM 服务配置：
-
-```bash
-ACTIVE_PROVIDER=openai                    # 或 ollama_local / deepseek / moonshot
-LLM_BASE_URL=https://api.openai.com/v1   # API 地址
-LLM_API_KEY=sk-your-key-here              # API Key
-LLM_MODEL=gpt-4o                          # 模型名称
-```
-
-支持 OpenAI、DeepSeek、Moonshot、本地 Ollama 等任何兼容 OpenAI 接口的服务。详见 [docs/LLM_CONFIG.md](docs/LLM_CONFIG.md)。
-
-### 第五步：安装 PX4 仿真环境
-
-一键脚本自动完成 PX4 克隆、补丁应用、自定义模型安装和编译：
-
-```bash
-./scripts/setup_px4.sh
-```
-
-该脚本会自动：
-- 克隆 PX4-Autopilot 官方仓库
-- 应用 macOS ARM64 编译补丁（CMake 策略、protobuf、VLA 警告）
-- 从官方模型仓库下载 PX4 Gazebo 基础模型
-- 安装仓库自带的 `x500_lidar_2d_cam` 传感器模型；不可用时 fallback 到 PX4 标准 `x500`
-- 安装自定义 Gazebo 场景（urban_rescue：建筑、废墟、受害者、火灾）
-- 编译 PX4 SITL
-- 输出 doctor 检查摘要和下一步命令
-
-> 首次编译约需 10-30 分钟。macOS ARM64 用户如遇问题，参见 [docs/SIMULATION_SETUP.md](docs/SIMULATION_SETUP.md)。
-> 配置前后可用 `./scripts/doctor_gazebo.sh urban_rescue x500_lidar_2d_cam` 检查缺失项；仿真启动后加 `--live` 检查运行状态。
-
-## 快速开始
-
-### 方式 A：无仿真（Mock 模式）
-
-不需要 PX4/Gazebo，只看 Web UI 和 AI 功能：
-
-```bash
 SIM_ADAPTER=mock python server.py
+```
+
+验证：
+
+```bash
+curl http://localhost:5001/api/status
 # 打开 http://localhost:5001
 ```
 
-### 方式 B：PX4 + Gazebo 仿真
+提交改动前可跑本地 gate：
 
-**终端 1 — 仿真环境**（需先执行 `./scripts/setup_px4.sh`）
 ```bash
+bash scripts/smoke_mock.sh
+```
+
+### 路径 3 — PX4 + Gazebo 引导式仿真
+
+建议在路径 1 或路径 2 跑通后再使用。该路径更重，因为 PX4 SITL 和 Gazebo 是系统级仿真依赖。仓库提供 doctor/setup/start 引导流程，避免手工猜路径。
+
+前置要求：
+
+- Python >= 3.10，Node.js >= 18
+- Git 与 CMake >= 3.22
+- Gazebo Harmonic CLI（`gz`）
+- 首次 PX4 build 通常需要 10-30 分钟，取决于机器性能
+
+```bash
+# 1）只读诊断。会说明缺什么，以及下一步该执行什么命令。
 ./scripts/doctor_gazebo.sh urban_rescue x500_lidar_2d_cam
+
+# 2）首次配置。克隆/编译 PX4，并安装 AerialClaw world/model。
+./scripts/setup_px4.sh
+
+# 3）启动 DDS Agent + Gazebo + PX4 SITL。保持该终端打开。
 ./scripts/start_sim.sh urban_rescue x500_lidar_2d_cam
 ```
 
-**终端 2 — AerialClaw 主服务**
+另开终端启动 AerialClaw 后端：
+
 ```bash
 source venv/bin/activate  # 如果使用虚拟环境
 SIM_ADAPTER=px4 PX4_GZ_WORLD=urban_rescue PX4_SIM_MODEL=x500_lidar_2d_cam python server.py
 ```
 
-**终端 3 — 浏览器访问**
+验证：
+
+```bash
+curl http://localhost:5001/api/status
+curl http://localhost:5001/api/sensor/status
+./scripts/doctor_gazebo.sh urban_rescue x500_lidar_2d_cam --live
+# 打开 http://localhost:5001
 ```
+
+如果本机无法解析仓库自带传感器模型，可用 PX4 标准 fallback：
+
+```bash
+./scripts/start_sim.sh default x500
+SIM_ADAPTER=px4 PX4_GZ_WORLD=default PX4_SIM_MODEL=x500 python server.py
+```
+
+启动器会打印常用日志路径：
+
+```text
+/tmp/aerialclaw_dds.log
+/tmp/aerialclaw_gz.log
+/tmp/aerialclaw_px4.log
+```
+
+手动仿真排障见 [docs/SIMULATION_SETUP.md](docs/SIMULATION_SETUP.md)。
+
+### 可选 LLM 配置
+
+Mock 模式和基础 Web 控制台不需要 LLM API Key。若要启用自然语言自主规划，复制 `.env.example` 并配置兼容 OpenAI 的模型服务：
+
+```bash
+cp .env.example .env
+# 编辑 ACTIVE_PROVIDER、LLM_BASE_URL、LLM_API_KEY、LLM_MODEL
+```
+
+支持 OpenAI、DeepSeek、Moonshot、本地 Ollama 等兼容 OpenAI 接口的服务。详见 [docs/LLM_CONFIG.md](docs/LLM_CONFIG.md)。
+
+## 快速开始
+
+启动 Docker mock、本地 mock 或 PX4/Gazebo 任一路径后，打开：
+
+```text
 http://localhost:5001
 ```
 
-> 手动启动仿真或排查问题，参见 [docs/SIMULATION_SETUP.md](docs/SIMULATION_SETUP.md)。
-
 在 Web 界面中：
 1. 点击「⚡ 初始化系统」
-2. 右上角切换到「🤖 AI」模式
-3. 输入自然语言指令测试：
+2. 已配置 LLM 时可切换到右上角「🤖 AI」模式；仅 smoke 测试时可使用 manual/mock 控制
+3. 可尝试输入：
    - *"起飞至15米高度并观察周围环境"*
    - *"搜索北部区域，发现目标后拍照记录"*
    - *"报告当前电量和位置"*
@@ -344,9 +385,9 @@ AerialClaw/
 │
 ├── robot_profile/               # 身份文档
 │   ├── SOUL.md / BODY.md        #   人格与硬件描述
-│   ├── MEMORY.md / SKILLS.md    #   经验与技能自述
 │   ├── WORLD_MAP.md             #   环境地图
 │   └── body_generator.py        #   从在线设备自动生成 BODY.md
+│   # 运行态记忆/技能统计文件由本地实验生成，不作为公开仓库交付文件
 │
 ├── config/                      # 配置文件
 │   ├── sim_config.yaml          #   仿真参数
@@ -354,8 +395,11 @@ AerialClaw/
 │   └── camera_spawn.sdf         #   摄像头部署定义
 │
 ├── scripts/                     # 自动化脚本
+│   ├── doctor_gazebo.sh         #   只读 PX4/Gazebo 配置诊断
 │   ├── setup_px4.sh             #   一键 PX4 + Gazebo 环境搭建
-│   └── start_sim.sh             #   仿真启动器
+│   ├── start_sim.sh             #   仿真启动器
+│   ├── smoke_mock.sh            #   本地 mock artifact smoke gate
+│   └── check_artifact.py        #   仓库一致性检查器
 │
 ├── ui/                          # Web 监控界面（React）
 │   └── src/components/          #   React 驾驶舱、地图、技能、传感器与组件

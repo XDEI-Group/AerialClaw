@@ -19,6 +19,7 @@ REQUIRED_FILES = [
     "ARTIFACT.md",
     "REVIEWER_CHECKLIST.md",
     "Dockerfile",
+    "compose.yml",
     ".dockerignore",
     "requirements-mock.txt",
     ".env.example",
@@ -47,6 +48,9 @@ STALE_PATTERNS = [
     r"`MEMORY\.md`",
     r"`SKILLS\.md`",
     r"`WORLD_MAP\.md`",
+    r"MEMORY\.md / SKILLS\.md",
+    r"robot_profile/MEMORY\.md",
+    r"robot_profile/SKILLS\.md",
     r"Multi-platform clients",
     r"15 React components",
 ]

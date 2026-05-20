@@ -33,10 +33,15 @@ This is the recommended first-pass reviewer path. It does **not** require PX4, G
 git clone https://github.com/XDEI-Group/AerialClaw.git
 cd AerialClaw
 
+# Option A: Docker Compose
+docker compose up --build
+
+# Option B: plain Docker
 docker build -t aerialclaw:review .
 docker run --rm -p 5001:5001 aerialclaw:review
+
 # Open http://localhost:5001
-# Or check: curl http://localhost:5001/api/status
+# Or check in another terminal: curl http://localhost:5001/api/status
 ```
 
 ## Local mock-mode evaluation

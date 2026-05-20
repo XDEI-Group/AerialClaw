@@ -176,109 +176,150 @@ The system supports **real-time Manual / AI mode switching**, allowing operators
 
 ## Installation and Deployment
 
-### Environment Requirements
+AerialClaw has three runnable paths. Start with Docker mock mode if you are a reviewer or first-time user; then use local mock mode for development; finally use the PX4/Gazebo path when you want the full simulator.
 
-- Python >= 3.10, Node.js >= 18
-- CMake >= 3.22
-- Git
+### Path 1 — Docker mock mode (recommended first run)
 
-### Step 1: Clone Repository
+This path is the fastest reproducible demo. It does **not** require PX4, Gazebo, AirSim, a GPU, a real drone, or an LLM API key.
 
 ```bash
 git clone https://github.com/XDEI-Group/AerialClaw.git
 cd AerialClaw
+
+# Option A: Docker Compose
+docker compose up --build
+
+# Option B: plain Docker
+docker build -t aerialclaw:review .
+docker run --rm -p 5001:5001 aerialclaw:review
 ```
 
-### Step 2: Python Environment
+Verify in another terminal:
 
 ```bash
+curl http://localhost:5001/api/status
+# Open http://localhost:5001
+```
+
+Expected response contains fields similar to:
+
+```json
+{"initialized": true, "mode": "manual", "current_robot": "HOST_DEVICE"}
+```
+
+The Docker image intentionally uses `requirements-mock.txt`, so it is a lightweight reviewer image rather than a full PX4/Gazebo/AirSim image.
+
+### Path 2 — Local mock mode (development)
+
+Use this when editing code locally without the simulator.
+
+```bash
+git clone https://github.com/XDEI-Group/AerialClaw.git
+cd AerialClaw
+
 python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
-```
 
-### Step 3: Build Web Interface
-
-```bash
 cd ui
 npm install
 npm run build
 cd ..
-```
 
-### Step 4: Configure LLM
-
-```bash
-cp .env.example .env
-```
-
-Edit `.env` with your LLM service credentials:
-
-```bash
-ACTIVE_PROVIDER=openai                    # or: ollama_local / deepseek / moonshot
-LLM_BASE_URL=https://api.openai.com/v1   # API endpoint
-LLM_API_KEY=sk-your-key-here              # API key
-LLM_MODEL=gpt-4o                          # Model name
-```
-
-Supports OpenAI, DeepSeek, Moonshot, local Ollama, or any OpenAI-compatible API. See [docs/LLM_CONFIG.md](docs/LLM_CONFIG.md) for details.
-
-### Step 5: Set Up PX4 Simulation
-
-One-click script handles PX4 cloning, patching, custom model installation, and compilation:
-
-```bash
-./scripts/setup_px4.sh
-```
-
-This script automatically:
-- Clones PX4-Autopilot from the official repository
-- Applies macOS ARM64 build patches (CMake policy, protobuf, VLA warnings)
-- Downloads PX4 Gazebo base models from the official model repository
-- Installs the bundled `x500_lidar_2d_cam` sensor model when available, with PX4 `x500` as fallback
-- Installs custom Gazebo worlds (urban_rescue: buildings, ruins, victims, fire)
-- Builds PX4 SITL
-- Prints a guided doctor summary with the next command to run
-
-> First build takes approximately 10-30 minutes. For macOS ARM64 troubleshooting, see [docs/SIMULATION_SETUP.md](docs/SIMULATION_SETUP.md).
-> Before/after setup, use `./scripts/doctor_gazebo.sh urban_rescue x500_lidar_2d_cam` to check missing dependencies and `--live` to inspect a running simulator.
-
-## Quick Start
-
-### Option A: Without Simulation (Mock Mode)
-
-Just see the Web UI and AI features without PX4/Gazebo:
-
-```bash
 SIM_ADAPTER=mock python server.py
+```
+
+Verify:
+
+```bash
+curl http://localhost:5001/api/status
 # Open http://localhost:5001
 ```
 
-### Option B: With PX4 + Gazebo Simulation
+Optional local gate before submitting changes:
 
-**Terminal 1 — Simulation** (after running `./scripts/setup_px4.sh`)
 ```bash
+bash scripts/smoke_mock.sh
+```
+
+### Path 3 — PX4 + Gazebo guided simulation
+
+Use this after Path 1 or Path 2 works. This path is heavier because PX4 SITL and Gazebo are OS-level simulator dependencies. The repository provides a guided doctor/setup/start flow so you do not need to guess paths manually.
+
+Prerequisites:
+
+- Python >= 3.10, Node.js >= 18
+- Git and CMake >= 3.22
+- Gazebo Harmonic CLI (`gz`)
+- Enough time for a first PX4 build, usually 10-30 minutes depending on the machine
+
+```bash
+# 1) Read-only diagnosis. It explains what is missing and the next command.
 ./scripts/doctor_gazebo.sh urban_rescue x500_lidar_2d_cam
+
+# 2) First-time setup. This clones/builds PX4 and installs AerialClaw worlds/models.
+./scripts/setup_px4.sh
+
+# 3) Start DDS Agent + Gazebo + PX4 SITL. Keep this terminal open.
 ./scripts/start_sim.sh urban_rescue x500_lidar_2d_cam
 ```
 
-**Terminal 2 — AerialClaw Service**
+In another terminal, start AerialClaw against PX4/Gazebo:
+
 ```bash
 source venv/bin/activate  # if using a virtual environment
 SIM_ADAPTER=px4 PX4_GZ_WORLD=urban_rescue PX4_SIM_MODEL=x500_lidar_2d_cam python server.py
 ```
 
-**Terminal 3 — Browser**
+Verify:
+
+```bash
+curl http://localhost:5001/api/status
+curl http://localhost:5001/api/sensor/status
+./scripts/doctor_gazebo.sh urban_rescue x500_lidar_2d_cam --live
+# Open http://localhost:5001
 ```
+
+If the bundled sensor model cannot be resolved on your machine, use the PX4 standard fallback:
+
+```bash
+./scripts/start_sim.sh default x500
+SIM_ADAPTER=px4 PX4_GZ_WORLD=default PX4_SIM_MODEL=x500 python server.py
+```
+
+Common logs printed by the launcher:
+
+```text
+/tmp/aerialclaw_dds.log
+/tmp/aerialclaw_gz.log
+/tmp/aerialclaw_px4.log
+```
+
+For manual simulator debugging, see [docs/SIMULATION_SETUP.md](docs/SIMULATION_SETUP.md).
+
+### Optional LLM configuration
+
+Mock mode and the basic Web console can run without an LLM API key. For autonomous natural-language planning, copy `.env.example` to `.env` and configure an OpenAI-compatible provider:
+
+```bash
+cp .env.example .env
+# edit ACTIVE_PROVIDER, LLM_BASE_URL, LLM_API_KEY, LLM_MODEL
+```
+
+Supports OpenAI, DeepSeek, Moonshot, local Ollama, or any OpenAI-compatible API. See [docs/LLM_CONFIG.md](docs/LLM_CONFIG.md) for details.
+
+## Quick Start
+
+After starting either Docker mock, local mock, or PX4/Gazebo mode, open:
+
+```text
 http://localhost:5001
 ```
 
-> For manual simulation setup or troubleshooting, see [docs/SIMULATION_SETUP.md](docs/SIMULATION_SETUP.md).
-
 In the Web UI:
 1. Click "⚡ Initialize System"
-2. Switch to "🤖 AI" mode (top right)
-3. Test with natural language commands:
+2. Switch to "🤖 AI" mode (top right) when an LLM is configured, or use manual/mock controls for smoke testing
+3. Try commands such as:
    - *"Take off to 15 meters and observe the surroundings"*
    - *"Search the northern area, photograph any targets found"*
    - *"Report current battery and position"*
@@ -343,9 +384,9 @@ AerialClaw/
 │
 ├── robot_profile/               # Identity documents
 │   ├── SOUL.md / BODY.md        #   Personality & hardware description
-│   ├── MEMORY.md / SKILLS.md    #   Experience & skill self-description
 │   ├── WORLD_MAP.md             #   Environment map
 │   └── body_generator.py        #   Auto BODY.md from live devices
+│   # Runtime memory/skill-stat files are generated locally and are not shipped
 │
 ├── config/                      # Configuration files
 │   ├── sim_config.yaml          #   Simulation parameters
@@ -353,8 +394,11 @@ AerialClaw/
 │   └── camera_spawn.sdf         #   Camera placement definition
 │
 ├── scripts/                     # Automation scripts
+│   ├── doctor_gazebo.sh         #   Read-only PX4/Gazebo setup doctor
 │   ├── setup_px4.sh             #   One-click PX4 + Gazebo setup
-│   └── start_sim.sh             #   Simulation launcher
+│   ├── start_sim.sh             #   Simulation launcher
+│   ├── smoke_mock.sh            #   Local mock artifact smoke gate
+│   └── check_artifact.py        #   Repository consistency checker
 │
 ├── ui/                          # Web monitoring interface (React)
 │   └── src/components/          #   React cockpit, map, skill, sensor, and widget components

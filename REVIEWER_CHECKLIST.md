@@ -9,7 +9,11 @@ Use `ARTIFACT.md` first. It describes a five-minute mock-mode evaluation path th
 Expected quick checks:
 
 ```bash
-# Recommended container path
+# Recommended container path (Compose)
+docker compose up --build
+curl http://localhost:5001/api/status
+
+# Equivalent plain Docker path
 docker build -t aerialclaw:review .
 docker run --rm -p 5001:5001 aerialclaw:review
 curl http://localhost:5001/api/status
@@ -33,6 +37,7 @@ SIM_ADAPTER=mock python server.py
 - `scripts/doctor_gazebo.sh` checks the optional PX4/Gazebo path and prints actionable next steps without modifying the system.
 - `.github/workflows/ci.yml` runs artifact checks, Python compile, pytest, Web UI lint/build, Docker image build, and a Docker `/api/status` smoke test.
 - `Dockerfile` builds a lightweight mock-mode image for reviewer evaluation using `requirements-mock.txt`.
+- `compose.yml` provides a `docker compose up --build` reviewer path with a `/api/status` healthcheck.
 
 ## Scope boundaries
 
@@ -63,6 +68,7 @@ At the time of hardening, the local smoke gate is expected to report:
 - `cd ui && npm run build` — pass
 - `docker build -t aerialclaw:review .` — pass when Docker daemon is available
 - `docker run --rm -p 5001:5001 aerialclaw:review` + `curl /api/status` — pass
+- `docker compose config` — pass
 
 ## Remaining known limitations
 
