@@ -243,7 +243,7 @@ SIM_ADAPTER=mock python server.py
 ### 前端页面空白
 ```
 cd ui && npm run build
-确认 ui/dist/index.html 存在
+确认前端构建产物已生成
 ```
 
 ### 设备连不上
