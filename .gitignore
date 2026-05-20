@@ -42,3 +42,8 @@ logs/
 # Local development artifacts
 .venv*/
 Users/
+
+# Generated runtime memory/profile artifacts
+robot_profile/MEMORY.md
+robot_profile/SKILLS.md
+memory/vector_cache.json
