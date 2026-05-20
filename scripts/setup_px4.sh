@@ -15,7 +15,7 @@
 #   2. Clones PX4-Autopilot (if not present)
 #   3. Applies macOS ARM64 build patches
 #   4. Downloads PX4 Gazebo base models
-#   5. Installs AerialClaw custom drone model (x500_lidar_2d_cam: 5 cameras + 2D LiDAR)
+#   5. Installs optional custom drone model if present; otherwise falls back to PX4 x500
 #   6. Installs AerialClaw custom Gazebo worlds (urban_rescue)
 #   7. Builds PX4 SITL
 #   8. Installs Micro XRCE-DDS Agent (if not present)
@@ -132,18 +132,18 @@ fi
 
 # ── Step 4: Install AerialClaw Custom Model ────────────────────
 
-info "Installing AerialClaw custom drone model (x500_lidar_2d_cam)..."
+info "Checking optional AerialClaw custom drone model..."
 
-# Overwrite with AerialClaw's customized version:
-#   - 5 cameras (front/rear/left/right/down) at 640x480, 80° FOV
-#   - 2D LiDAR on top
-#   - Optimized mount positions for search & rescue
+# Optional customized sensor model. The repository remains runnable with PX4's
+# standard x500 model when this directory is absent.
 CUSTOM_MODEL_SRC="${PROJECT_DIR}/sim/models/x500_lidar_2d_cam"
 if [ -d "$CUSTOM_MODEL_SRC" ]; then
     cp -r "$CUSTOM_MODEL_SRC" "$MODEL_DIR/"
-    ok "AerialClaw x500_lidar_2d_cam installed (5 cameras + 2D LiDAR)"
+    ok "AerialClaw x500_lidar_2d_cam installed"
 else
-    warn "Custom model not found at $CUSTOM_MODEL_SRC"
+    warn "Optional custom model not found at $CUSTOM_MODEL_SRC"
+    echo "  Falling back to PX4 standard model: x500"
+    echo "  Use ./scripts/start_sim.sh urban_rescue x500 for the default simulation path."
 fi
 
 # ── Step 5: Install Custom Gazebo Worlds ───────────────────────

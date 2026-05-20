@@ -1,0 +1,51 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest
+      - name: Artifact consistency check
+        run: python scripts/check_artifact.py
+      - name: Python compile check
+        run: python -m compileall -q .
+      - name: Python tests
+        run: python -m pytest
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+      - name: Install Web UI dependencies
+        run: |
+          cd ui
+          npm ci
+      - name: Lint Web UI
+        run: |
+          cd ui
+          npm run lint
+      - name: Build Web UI
+        run: |
+          cd ui
+          npm run build
+      - name: One-command mock smoke gate
+        run: bash scripts/smoke_mock.sh
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build mock-mode Docker image
+        run: docker build -t aerialclaw:ci .

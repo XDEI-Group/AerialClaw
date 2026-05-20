@@ -1,0 +1,10 @@
+cff-version: 1.2.0
+title: "AerialClaw: Towards Personal AI Agents for General Autonomous Aerial Systems"
+message: "If you use AerialClaw in academic work, please cite this software artifact."
+type: software
+authors:
+  - name: XDEI Group
+  - name: ROBOTY Lab, School of Computer Science and Technology, Xidian University
+repository-code: "https://github.com/XDEI-Group/AerialClaw"
+license: MIT
+date-released: 2026-05-20

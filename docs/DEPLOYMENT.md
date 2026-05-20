@@ -81,7 +81,7 @@ python server.py
 bash scripts/setup_px4.sh
 
 # 启动仿真
-bash scripts/start_gz_sim.sh urban_rescue
+bash scripts/start_sim.sh urban_rescue
 
 # 在另一个终端启动 AerialClaw
 python server.py
@@ -143,81 +143,32 @@ client.wait()
 ```
 
 **Arduino/ESP32：**
-参考 `clients/arduino/aerialclaw_client.ino`
+可按 `docs/DEVICE_PROTOCOL.md` 中的 REST + WebSocket schema 实现 Arduino/ESP32 客户端；生产级 SDK 尚未随仓库发布。
 
 **ROS2：**
-```bash
-ros2 run aerialclaw aerialclaw_bridge \
-  --ros-args -p server_url:=http://服务器IP:5001
-```
+
+ROS2 bridge is a planned client SDK target. Until it is shipped, integrate through the REST + WebSocket protocol in `docs/DEVICE_PROTOCOL.md`, or implement a small ROS2 node that forwards telemetry/actions to those endpoints.
 
 ---
 
-## 混合部署
+## 混合部署（研究方向）
 
-### 边缘节点（Jetson/树莓派）
+Edge/cloud deployment is a research direction rather than a fully packaged distribution in this repository. For now, start from the standard installation and remove heavyweight optional dependencies according to your target hardware.
 
-```bash
-# 安装轻量版（不含 VLM、不含前端）
-pip install -r requirements-edge.txt
-
-# 配置
-# .env 中设置:
-#   HYBRID_MODE=edge
-#   CLOUD_URL=https://cloud-server:5001
-#   LOCAL_MODEL=qwen2.5:1.5b  (本地小模型)
-
-python server.py
-```
-
-### 云端节点
-
-```bash
-# .env 中设置:
-#   HYBRID_MODE=cloud
-#   LLM_MODEL=gpt-4o  (强模型)
-#   VLM_MODEL=gpt-4o   (视觉模型)
-
-python server.py
-```
-
-### 断网策略
-
-混合模式下断网自动触发：
-1. 本地小模型接管简单决策
-2. 安全包线始终生效（硬编码，不依赖网络）
-3. 飞行器自动悬停 → 等待 → 返航
-
-配置 `config/safety_config.yaml`：
-```yaml
-flight_envelope:
-  heartbeat_timeout: 10    # 秒
-```
+The safety envelope should remain active in both cloud and edge deployments; do not bypass flight limits when porting to real hardware.
 
 ---
 
-## Docker 部署
+## Docker 部署（mock-mode）
 
-```dockerfile
-# Dockerfile
-FROM python:3.12-slim
-
-WORKDIR /app
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-
-COPY . .
-RUN cd ui && npm install && npm run build
-
-EXPOSE 5001
-CMD ["python", "server.py"]
-```
+The root `Dockerfile` is intended for lightweight mock-mode review, not PX4/Gazebo simulation.
 
 ```bash
-# 构建和运行
 docker build -t aerialclaw .
-docker run -d -p 5001:5001 --env-file .env aerialclaw
+docker run --rm -p 5001:5001 -e SIM_ADAPTER=mock aerialclaw
 ```
+
+For PX4/Gazebo, use the native setup in `docs/SIMULATION_SETUP.md`.
 
 ---
 
@@ -256,14 +207,11 @@ safety_level: standard
 ### 健康检查
 
 ```bash
-# 命令行
-python -m core.doctor
+# Backend status endpoint
+curl http://localhost:5001/api/status
 
-# API
-curl http://localhost:5001/api/doctor/run
-
-# Web UI
-# 点击 Doctor 面板即可
+# Sensor bridge status
+curl http://localhost:5001/api/sensor/status
 ```
 
 ### 日志
@@ -274,14 +222,13 @@ curl http://localhost:5001/api/doctor/run
 
 ### 启动自检
 
-`server.py` 启动时自动执行 7 项自检：
-- Python 版本
-- 依赖完整性
-- .env 配置
-- LLM 连接
-- VLM 连接
-- Web UI 构建
-- 仿真环境
+For reviewer smoke testing, run:
+
+```bash
+python -m compileall -q .
+python -m pytest
+SIM_ADAPTER=mock python server.py
+```
 
 ---
 

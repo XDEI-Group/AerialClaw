@@ -517,10 +517,14 @@ GET /api/devices
        └── 传感器数据 → 发 device_sensor（可选）
 ```
 
-### 客户端模板
+### 客户端模板状态
 
-- Python: `clients/python/aerialclaw_client.py`
-- Arduino/ESP32: `clients/arduino/aerialclaw_client.ino`
-- ROS2: `clients/ros2/aerialclaw_bridge.py`
+当前仓库主要提供服务端协议、适配器接口和示例接入流程。Python / Arduino / ROS2 客户端 SDK 尚未作为生产级包随仓库发布；第三方设备可按本页 REST + WebSocket 协议自行实现轻量客户端。
 
-详见 `clients/README.md`。
+计划中的 SDK 形态包括：
+
+- Python client package
+- Arduino/ESP32 sketch
+- ROS2 bridge node
+
+在这些 SDK 发布前，请以本文档中的请求 / 事件 schema 作为接入规范。

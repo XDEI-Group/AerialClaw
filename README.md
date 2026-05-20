@@ -237,7 +237,7 @@ This script automatically:
 - Clones PX4-Autopilot from the official repository
 - Applies macOS ARM64 build patches (CMake policy, protobuf, VLA warnings)
 - Downloads PX4 Gazebo base models from the official model repository
-- Installs AerialClaw's custom drone model (x500_lidar_2d_cam: 5 cameras + 2D LiDAR)
+- Uses PX4's standard `x500` model by default; if an optional custom sensor model is present, it is installed automatically
 - Installs custom Gazebo worlds (urban_rescue: buildings, ruins, victims, fire)
 - Builds PX4 SITL
 
@@ -357,7 +357,7 @@ AerialClaw/
 │   └── start_sim.sh             #   Simulation launcher
 │
 ├── ui/                          # Web monitoring interface (React)
-│   └── src/components/          #   15 React components
+│   └── src/components/          #   React cockpit, map, skill, sensor, and widget components
 │
 ├── docs/                        # Developer documentation
 │   ├── SIMULATION_SETUP.md      #   PX4 + Gazebo setup guide
@@ -376,17 +376,22 @@ AerialClaw/
 - [x] PX4 + Gazebo simulation · Web monitoring & interaction interface (15 components)
 - [x] Spinal safety architecture — command filter → sandbox → approval → flight envelope
 - [x] Four-layer memory system — working / episodic / skill / world + vector search
-- [x] Universal device protocol — REST + WebSocket, any device can connect
-- [x] Self-evolution engine — device analysis → code generation → skill optimization
-- [x] Device lifecycle — conversational onboarding → capability profiling → skill binding
-- [x] Hybrid deployment — edge-cloud planning with automatic failover
-- [x] Multi-platform clients — Python SDK, Arduino/ESP32, ROS2 bridge
+- [x] Universal device protocol — REST + WebSocket interface for device integration
+- [x] Self-evolution research modules — device analysis, code generation, and skill optimization prototypes
+- [x] Device lifecycle concepts — conversational onboarding, capability profiling, and skill binding design
+- [ ] Production SDK packages for Python / Arduino / ROS2 clients
+- [ ] Hybrid edge-cloud deployment packaging
 - [x] AirSim adapter — remote simulation connection support
 - [x] AirSim remote simulation validation — Shanghai urban scene autonomous flight verified
 
 ### Future Directions
 - [ ] Real drone porting · Sim2Real transfer
+- [ ] Production multi-platform client SDKs · Hybrid edge-cloud packaging
 - [ ] Multi-agent collaboration · MCP standard interface · Cross-device shared learning
+
+## Artifact Evaluation
+
+For a reviewer-focused quick start, mock-mode path, expected outputs, and known limitations, see [ARTIFACT.md](ARTIFACT.md).
 
 ## Contribution
 

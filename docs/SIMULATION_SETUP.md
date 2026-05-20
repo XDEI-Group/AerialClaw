@@ -144,8 +144,7 @@ python server.py
 ```
 
 > **Important**: Use STANDALONE mode (`PX4_GZ_STANDALONE=1`) with `bin/px4` directly.
-> The `make px4_sitl gz_x500` shortcut works for testing but hardcodes the model name,
-> making it impossible to use custom sensor models like `x500_lidar_2d_cam`.
+> The `make px4_sitl gz_x500` shortcut works for basic testing. Custom sensor models can be used when the corresponding Gazebo model files are available locally and `PX4_SIM_MODEL` is set accordingly.
 
 ### Using the start script (recommended)
 
@@ -167,11 +166,7 @@ python server.py
 
 ### Default Sensor Setup
 
-The X500 drone model includes:
-- **5 cameras**: front, rear, left, right, down (each 640×480, 30fps)
-- **3D LiDAR**: 360° × 16 layers = 5760 points per scan, 20m range
-
-Camera placement is defined in the bundled Gazebo model under `sim/models/x500_lidar_2d_cam/`.
+The default reviewer path uses PX4/Gazebo standard `x500`. Camera/LiDAR streaming requires a sensor-enabled Gazebo model. If you provide a local custom model, set `PX4_SIM_MODEL` to that model name and ensure Gazebo can resolve its SDF files.
 The Web console does **not** read Gazebo topics directly. `sim/gz_sensor_bridge.py`
 subscribes to Gazebo Transport camera/LiDAR topics and `server.py` forwards the
 latest frames to the UI via Socket.IO events (`sensor_cameras`, `sensor_lidar`).
@@ -179,9 +174,9 @@ latest frames to the UI via Socket.IO events (`sensor_cameras`, `sensor_lidar`).
 ### Customizing Sensors
 
 To modify the sensor configuration:
-1. Edit the PX4/Gazebo model SDF files under `sim/models/x500_lidar_2d_cam/`
-2. Modify the LiDAR model parameters in Gazebo/PX4 model files if needed
-3. Update topic names in `sim/gz_sensor_bridge.py` if your sensor/link names change
+1. Add or edit your PX4/Gazebo model SDF files in a Gazebo model path.
+2. Modify camera/LiDAR parameters in the model files if needed.
+3. Update topic names in `sim/gz_sensor_bridge.py` if your sensor/link names change.
 
 ## Key PX4 Parameters
 
@@ -232,7 +227,7 @@ Check the full path:
 gz topic -l | grep -Ei 'camera|image|lidar|scan'
 
 # Start backend with PX4+Gazebo adapter
-SIM_ADAPTER=px4 PX4_GZ_WORLD=urban_rescue PX4_SIM_MODEL=x500_lidar_2d_cam python server.py
+SIM_ADAPTER=px4 PX4_GZ_WORLD=urban_rescue PX4_SIM_MODEL=x500 python server.py
 
 # After connecting the adapter, check bridge status
 curl http://localhost:5001/api/sensor/status
@@ -241,14 +236,14 @@ curl http://localhost:5001/api/sensor/status
 Expected backend log after the adapter connects:
 
 ```text
-传感器桥接启动 (world=urban_rescue, model=x500_lidar_2d_cam_0)
+传感器桥接启动 (world=urban_rescue, model=x500_0)
 传感器数据推送线程已启动
 ```
 
 If status says the bridge is unavailable:
 - install / expose Gazebo Harmonic Python bindings (`gz.transport13`, `gz.msgs10`)
 - verify `PX4_GZ_WORLD` matches your running world
-- verify `PX4_SIM_MODEL` matches the spawned model base name; AerialClaw appends `_0`
+- verify `PX4_SIM_MODEL` matches the spawned model base name; PX4/Gazebo commonly appends `_0` to the spawned model
 - if you renamed links/sensors, update `sim/gz_sensor_bridge.py` topic templates
 
 ### MAVSDK connection fails

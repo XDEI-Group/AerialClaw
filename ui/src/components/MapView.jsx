@@ -8,7 +8,7 @@
  *   - 点击地图 → 弹出指令输入框 → 发送给无人机 AI
  *   - 缩放拖拽
  */
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 
 function ned2c(n, e, cx, cy, s) { return { x: cx + e * s, y: cy - n * s } }
 function c2ned(px, py, cx, cy, s) { return { n: -(py - cy) / s, e: (px - cx) / s } }
@@ -95,15 +95,20 @@ export default function MapView({ socket, worldState, onCommand }) {
     obs.observe(el); return () => obs.disconnect()
   }, [])
 
+  const autoScaleTrail = useMemo(
+    () => (trail.length > 0 && trail.length % 20 === 0 ? trail : []),
+    [trail]
+  )
+
   // 自动缩放
   useEffect(() => {
-    const pts = [...trail, ...landmarks.map(l => ({ n: l.n, e: l.e }))]
+    const pts = [...autoScaleTrail, ...landmarks.map(l => ({ n: l.n, e: l.e }))]
     if (pts.length < 2) { setScale(1.5); return }
     const minN = Math.min(...pts.map(p => p.n)) - 40, maxN = Math.max(...pts.map(p => p.n)) + 40
     const minE = Math.min(...pts.map(p => p.e)) - 40, maxE = Math.max(...pts.map(p => p.e)) + 40
     const fit = Math.min(sz.w * 0.8 / (maxE - minE || 100), sz.h * 0.8 / (maxN - minN || 100))
     setScale(Math.max(0.1, Math.min(5, fit)))
-  }, [trail.length > 0 && trail.length % 20 === 0, landmarks.length, sz])
+  }, [autoScaleTrail, landmarks, sz])
 
   // 绘制
   useEffect(() => {

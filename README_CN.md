@@ -238,7 +238,7 @@ LLM_MODEL=gpt-4o                          # 模型名称
 - 克隆 PX4-Autopilot 官方仓库
 - 应用 macOS ARM64 编译补丁（CMake 策略、protobuf、VLA 警告）
 - 从官方模型仓库下载 PX4 Gazebo 基础模型
-- 安装 AerialClaw 自定义无人机模型（x500_lidar_2d_cam：5 路摄像头 + 2D LiDAR）
+- 默认使用 PX4 标准 `x500` 模型；如果仓库中提供可选自定义传感器模型，脚本会自动安装
 - 安装自定义 Gazebo 场景（urban_rescue：建筑、废墟、受害者、火灾）
 - 编译 PX4 SITL
 
@@ -358,7 +358,7 @@ AerialClaw/
 │   └── start_sim.sh             #   仿真启动器
 │
 ├── ui/                          # Web 监控界面（React）
-│   └── src/components/          #   15 个 React 组件
+│   └── src/components/          #   React 驾驶舱、地图、技能、传感器与组件
 │
 ├── docs/                        # 开发文档
 │   ├── SIMULATION_SETUP.md      #   PX4 + Gazebo 搭建指南
@@ -377,17 +377,22 @@ AerialClaw/
 - [x] PX4 + Gazebo 仿真集成 · Web 监控与交互界面（15 个组件）
 - [x] 脊髓安全架构 — 命令过滤 → 沙箱 → 审批 → 安全包线
 - [x] 四层记忆系统 — 工作 / 情节 / 技能 / 世界 + 向量检索
-- [x] 通用设备协议 — REST + WebSocket，任何设备可接入
-- [x] 自进化引擎 — 设备分析 → 代码生成 → 技能优化
-- [x] 设备生命周期 — 对话建档 → 能力画像 → 技能绑定
-- [x] 混合部署 — 端云协同规划，自动故障切换
-- [x] 多平台客户端 — Python SDK、Arduino/ESP32、ROS2 桥接
+- [x] 通用设备协议 — REST + WebSocket 设备接入接口
+- [x] 自进化研究模块 — 设备分析、代码生成与技能优化原型
+- [x] 设备生命周期概念 — 对话建档、能力画像与技能绑定设计
+- [ ] Python / Arduino / ROS2 多平台客户端生产级 SDK
+- [ ] 端云协同混合部署打包
 - [x] AirSim 适配器 — 远程仿真连接支持
 - [x] AirSim 远程仿真验证 — 上海城市场景自主飞行验证通过
 
 ### 未来方向
 - [ ] 真实无人机移植 · Sim2Real 迁移
+- [ ] 多平台客户端 SDK · 端云协同部署打包
 - [ ] 多智能体协作 · MCP 标准接口 · 跨设备共享学习
+
+## Artifact 评审指南
+
+面向评审员的快速启动、mock-mode 复现路径、预期输出与已知限制见 [ARTIFACT.md](ARTIFACT.md)。
 
 ## 参与贡献
 
