@@ -50,7 +50,7 @@ SIM_ADAPTER=mock python server.py
 Expected results:
 
 - `python -m pytest` passes.
-- `npm run build` completes and writes `ui/dist/`.
+- `npm run build` completes and produces the Vite distribution directory under the UI workspace.
 - The backend starts on `http://localhost:5001`.
 - The Web console can be opened and initialized with the mock adapter.
 
