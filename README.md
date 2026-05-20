@@ -83,13 +83,11 @@ The system possesses basic exception handling capabilities: path replanning when
 
 | Document | Functional Description | Content Example |
 |----------|-----------------------|-----------------|
-| `SOUL.md` | Defines decision preferences and constraints | *Safety-first strategy, conservative risk assessment* |
-| `BODY.md` | Records hardware configuration and performance parameters | *Sensor types, flight performance boundaries* |
-| `MEMORY.md` | Stores task experience and lessons learned | *Effective strategy records for specific scenarios* |
-| `SKILLS.md` | Tracks skill execution statistics | *Success rates and applicable conditions for actions* |
-| `WORLD_MAP.md` | Builds environmental feature knowledge base | *Landmarks and risk points in known areas* |
+| `robot_profile/SOUL.md` | Defines decision preferences and constraints | *Safety-first strategy, conservative risk assessment* |
+| `robot_profile/BODY.md` | Records hardware configuration and performance parameters | *Sensor types, flight performance boundaries* |
+| `robot_profile/WORLD_MAP.md` | Builds environmental feature knowledge base | *Landmarks and risk points in known areas* |
 
-All documents use Markdown format, supporting version management and manual review. The system automatically reads and writes relevant documents before and after tasks.
+Runtime experience and skill-statistics files are generated during experiments and intentionally excluded from the public repository. This keeps the artifact clean while preserving the mechanism that can create those files locally.
 
 ### Integrated Skill System
 

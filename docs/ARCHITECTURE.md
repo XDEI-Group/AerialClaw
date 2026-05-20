@@ -32,7 +32,7 @@
 Task (natural language)
   │
   ▼
-Brain (Planner) ──── reads ────► robot_profile/ (SOUL, MEMORY, SKILLS)
+Brain (Planner) ──── reads ────► robot_profile/ (SOUL, BODY, WORLD_MAP + local runtime memory if generated)
   │                               perception/daemon (env summary)
   │
   ▼
@@ -63,7 +63,6 @@ Next iteration (or task complete)
 | **Adapters** | `adapters/` | Hardware abstraction layer |
 | **Sim** | `sim/` | Gazebo sensor bridge |
 | **LLM** | `llm/`, `llm_client.py` | Multi-provider LLM client |
-| **Tools** | `tools/` | LLM tool-calling support |
 | **Config** | `config.py`, `.env` | Centralized configuration |
-| **Profile** | `robot_profile/` | Identity documents (SOUL, BODY, MEMORY, SKILLS) |
+| **Profile** | `robot_profile/` | Public identity/world documents plus local generated runtime memory |
 | **UI** | `ui/` | React-based monitoring dashboard |

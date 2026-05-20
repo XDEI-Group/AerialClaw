@@ -2,46 +2,31 @@
 
 AerialClaw 通过 Adapter 模式实现硬件抽象，所有飞行控制操作通过统一接口调用。
 
-## BaseAdapter Interface
+## Adapter Interface
 
-所有适配器必须继承 `adapters/base_adapter.py` 中的 `BaseAdapter`，实现以下方法：
+适配器通过 `adapters/adapter_manager.py` 注册和切换。当前仓库没有单独的 base adapter 源文件；内置适配器以 `adapters/sim_adapter.py` 中的 `SimAdapter` 数据结构和方法约定为基线，并由 `skills/motor_skills.py` 通过 `get_adapter()` 调用。
+
+新适配器至少应提供运动技能实际使用的同步方法：
 
 ```python
-class BaseAdapter:
-    """Hardware abstraction interface."""
+class MyAdapter:
+    name = "my_device"
+    description = "My hardware or simulator adapter"
+    supported_vehicles = ["UAV"]
 
-    async def connect(self) -> bool:
-        """Connect to the drone. Return True on success."""
-
-    async def arm(self) -> bool:
-        """Arm the drone motors."""
-
-    async def takeoff(self, altitude: float) -> bool:
-        """Take off to specified altitude (meters, positive up)."""
-
-    async def land(self) -> bool:
-        """Land at current position."""
-
-    async def fly_to(self, north: float, east: float, down: float, speed: float) -> bool:
-        """Fly to NED position at given speed."""
-
-    async def get_position(self) -> tuple[float, float, float]:
-        """Return current position as (north, east, down) in meters."""
-
-    async def get_battery(self) -> float:
-        """Return battery percentage (0-100)."""
-
-    async def get_heading(self) -> float:
-        """Return current heading in degrees (0-360)."""
-
-    async def set_heading(self, heading: float) -> bool:
-        """Rotate to specified heading."""
-
-    async def hover(self, duration: float) -> bool:
-        """Hold current position for duration seconds."""
-
-    async def return_to_launch(self) -> bool:
-        """Return to takeoff position and land."""
+    def connect(self, connection_str: str = "", timeout: float = 15.0) -> bool: ...
+    def disconnect(self) -> None: ...
+    def is_connected(self) -> bool: ...
+    def is_armed(self) -> bool: ...
+    def is_in_air(self) -> bool: ...
+    def takeoff(self, altitude: float) -> bool: ...
+    def land(self) -> bool: ...
+    def fly_to(self, north: float, east: float, down: float, speed: float = 5.0) -> bool: ...
+    def hover(self, duration: float = 1.0) -> bool: ...
+    def return_to_launch(self) -> bool: ...
+    def get_position(self): ...
+    def get_battery(self) -> float: ...
+    def get_state(self): ...
 ```
 
 ## Existing Adapters
@@ -54,24 +39,16 @@ class BaseAdapter:
 
 ## Adding a New Adapter
 
-1. Create `adapters/my_adapter.py`
-2. Inherit from `BaseAdapter`
-3. Implement all abstract methods
-4. Register in `adapters/adapter_factory.py`:
+1. Create a new adapter module under `adapters/`.
+2. Implement the interface methods above. Use `adapters/mock_adapter.py` and `adapters/px4_adapter.py` as concrete references.
+3. Register it in `adapters/adapter_manager.py`:
 
 ```python
-# adapter_factory.py
 from adapters.my_adapter import MyAdapter
-
-ADAPTERS = {
-    "px4": PX4Adapter,
-    "sim": SimAdapter,
-    "mock": MockAdapter,
-    "my_device": MyAdapter,  # ← add here
-}
+register_adapter("my_device", MyAdapter)
 ```
 
-5. Use it in your config or startup code
+4. Start the server or switch at runtime with that adapter name, for example `SIM_ADAPTER=my_device python server.py` if your startup path reads `SIM_ADAPTER`.
 
 ## Coordinate System
 

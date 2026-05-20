@@ -181,7 +181,7 @@ AerialClaw console at http://localhost:5001
 
 **Error:** `ModuleNotFoundError: No module named 'numpy'` or build failure  
 **Cause:** `airsim 1.8.1` requires Python ≤ 3.12  
-**Fix:** Use Python 3.10 via pyenv. AerialClaw's `airsim_rpc.py` does NOT require the `airsim` package.
+**Fix:** Use Python 3.10 via pyenv. AerialClaw's `adapters/airsim_rpc.py` does NOT require the `airsim` package.
 
 ---
 
@@ -197,20 +197,20 @@ AerialClaw console at http://localhost:5001
 
 **Error:** `ModuleNotFoundError: No module named 'tornado.platform.auto'`  
 **Cause:** Tornado 6 removed `tornado.platform.auto`; msgpackrpc still imports it  
-**Fix:** Already handled in `airsim_rpc.py` — we don't use tornado at all.
+**Fix:** Already handled in `adapters/airsim_rpc.py` — we don't use tornado at all.
 
 ---
 
 ### Pitfall 4: `BaseIOStream.__init__() got an unexpected keyword argument 'io_loop'`
 
 **Same root cause as Pitfall 2/3.** Tornado 6 dropped the `io_loop` parameter.  
-**Fix:** Same — `airsim_rpc.py` bypasses this entirely.
+**Fix:** Same — `adapters/airsim_rpc.py` bypasses this entirely.
 
 ---
 
 ### Pitfall 5: AirSim binary has no execute permission
 
-**Error:** `Permission denied` when running `start.sh`  
+**Error:** `Permission denied` when running the AirSim environment start script  
 **Fix:**
 ```bash
 chmod +x ~/code/openfly/envs/airsim/env_airsim_16/LinuxNoEditor/start.sh

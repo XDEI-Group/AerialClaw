@@ -143,7 +143,7 @@ python server.py
 # Open http://localhost:5001
 ```
 
-> **Important**: Use STANDALONE mode (`PX4_GZ_STANDALONE=1`) with `bin/px4` directly.
+> **Important**: Use STANDALONE mode (`PX4_GZ_STANDALONE=1`) with the PX4 SITL binary produced by your local PX4 build directly.
 > The `make px4_sitl gz_x500` shortcut works for basic testing. Custom sensor models can be used when the corresponding Gazebo model files are available locally and `PX4_SIM_MODEL` is set accordingly.
 
 ### Using the start script (recommended)

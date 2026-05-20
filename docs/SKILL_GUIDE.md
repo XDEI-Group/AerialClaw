@@ -10,28 +10,23 @@ AerialClaw uses a two-tier skill system:
 
 ### Structure
 
-Each hard skill is a function in `skills/hard_skills.py` with a corresponding documentation file in `skills/docs/`.
+Each hard skill is a `Skill` subclass implemented in files such as `skills/motor_skills.py`, `skills/perception_skills.py`, and `skills/cognitive_skills.py`, with corresponding documentation in `skills/docs/`.
 
 ```python
-# skills/hard_skills.py
+# skills/motor_skills.py
 
-async def takeoff(adapter, altitude: float = 5.0, **kwargs) -> dict:
-    """
-    Take off to specified altitude.
+class Takeoff(Skill):
+    name = "takeoff"
+    description = "Take off or climb to a target altitude."
+    skill_type = "hard"
+    robot_type = ["UAV"]
+    input_schema = {"altitude": "float, target altitude in meters"}
 
-    Args:
-        adapter: Hardware adapter instance
-        altitude: Target altitude in meters
-
-    Returns:
-        {"ok": True/False, "message": "...", ...}
-    """
-    success = await adapter.takeoff(altitude)
-    return {
-        "ok": success,
-        "message": f"Took off to {altitude}m" if success else "Takeoff failed",
-        "altitude": altitude,
-    }
+    def execute(self, input_data: dict) -> SkillResult:
+        adapter = _get_adapter()
+        altitude = input_data.get("altitude", 5.0)
+        ok = adapter.takeoff(altitude)
+        return SkillResult(success=ok)
 ```
 
 ### Skill Document (`skills/docs/takeoff.md`)
@@ -57,11 +52,11 @@ Take off to a specified altitude.
 
 ### Adding a New Hard Skill
 
-1. Add the function to `skills/hard_skills.py`
-2. Create `skills/docs/your_skill.md` (the LLM reads this to understand usage)
-3. Register in `skills/registry.py`
+1. Add a `Skill` subclass to the appropriate implementation module, for example `skills/motor_skills.py` for motion skills or `skills/perception_skills.py` for perception skills.
+2. Create a matching Markdown document under `skills/docs/` (for example, create `skills/docs/your_skill.md`) so the LLM can understand usage.
+3. Register the skill instance through `skills/registry.py` in the same place where related skills are registered.
 
-The skill loader (`skills/skill_loader.py`) automatically discovers skills from the docs directory and builds a summary table for the LLM.
+The skill loader (`skills/skill_loader.py`) discovers documents from `skills/docs/` and builds a summary table for the LLM.
 
 ## Soft Skills
 

@@ -217,15 +217,15 @@ curl http://localhost:5001/api/sensor/status
 ### 日志
 
 - 终端日志: 彩色输出
-- 文件日志: `logs/YYYY-MM-DD.log` (7天轮转)
-- 审计日志: `logs/audit/` (操作记录)
+- 文件日志: runtime log files when file logging is enabled (7天轮转)
+- 审计日志: runtime audit logs when audit logging is enabled (操作记录)
 
 ### 启动自检
 
 For reviewer smoke testing, run:
 
 ```bash
-python -m compileall -q .
+python -m compileall -q adapters brain config llm memory runtime scripts sim skills swarm server.py
 python -m pytest
 SIM_ADAPTER=mock python server.py
 ```
