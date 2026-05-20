@@ -9,6 +9,12 @@ Use `ARTIFACT.md` first. It describes a five-minute mock-mode evaluation path th
 Expected quick checks:
 
 ```bash
+# Recommended container path
+docker build -t aerialclaw:review .
+docker run --rm -p 5001:5001 aerialclaw:review
+curl http://localhost:5001/api/status
+
+# Local fallback path
 python -m compileall -q .
 python -m pytest
 bash scripts/smoke_mock.sh
@@ -24,8 +30,8 @@ SIM_ADAPTER=mock python server.py
 - `tests/test_artifact_consistency.py` runs the repository consistency checker.
 - `scripts/check_artifact.py` fails on stale documentation references, missing artifact files, or accidental absolute-path duplicate trees.
 - `scripts/smoke_mock.sh` runs the complete local mock artifact smoke gate.
-- `.github/workflows/ci.yml` runs artifact checks, Python compile, pytest, Web UI lint/build, and Docker image build.
-- `Dockerfile` builds a lightweight mock-mode image for reviewer evaluation.
+- `.github/workflows/ci.yml` runs artifact checks, Python compile, pytest, Web UI lint/build, Docker image build, and a Docker `/api/status` smoke test.
+- `Dockerfile` builds a lightweight mock-mode image for reviewer evaluation using `requirements-mock.txt`.
 
 ## Scope boundaries
 
@@ -42,7 +48,8 @@ At the time of hardening, the local smoke gate is expected to report:
 - `python -m pytest` — 10 tests pass
 - `cd ui && npm run lint` — pass with no warnings/errors
 - `cd ui && npm run build` — pass
-- `docker build -t aerialclaw-oss-review:local .` — pass when Docker daemon is available
+- `docker build -t aerialclaw:review .` — pass when Docker daemon is available
+- `docker run --rm -p 5001:5001 aerialclaw:review` + `curl /api/status` — pass
 
 ## Remaining known limitations
 

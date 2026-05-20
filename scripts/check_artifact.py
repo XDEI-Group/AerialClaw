@@ -20,6 +20,7 @@ REQUIRED_FILES = [
     "REVIEWER_CHECKLIST.md",
     "Dockerfile",
     ".dockerignore",
+    "requirements-mock.txt",
     ".env.example",
     "pyproject.toml",
     "CITATION.cff",

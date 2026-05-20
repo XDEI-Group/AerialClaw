@@ -25,14 +25,25 @@ bash scripts/smoke_mock.sh
 
 This runs artifact consistency checks, Python compile, pytest, Web UI lint, and Web UI build.
 
-## Quick path: mock-mode evaluation
+## Quick path: Docker mock-mode evaluation
 
-This path does **not** require PX4, Gazebo, AirSim, a real drone, or an LLM API key. It is intended for first-pass review.
+This is the recommended first-pass reviewer path. It does **not** require PX4, Gazebo, AirSim, a GPU, a real drone, or an LLM API key. The image intentionally uses `requirements-mock.txt` instead of the full simulation/ML dependency set.
 
 ```bash
 git clone https://github.com/XDEI-Group/AerialClaw.git
 cd AerialClaw
 
+docker build -t aerialclaw:review .
+docker run --rm -p 5001:5001 aerialclaw:review
+# Open http://localhost:5001
+# Or check: curl http://localhost:5001/api/status
+```
+
+## Local mock-mode evaluation
+
+If Docker is unavailable, reviewers can run the same mock path locally:
+
+```bash
 python3.10 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt

@@ -7,8 +7,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     SIM_ADAPTER=mock \
     SERVER_HOST=0.0.0.0 \
     SERVER_PORT=5001
-COPY requirements.txt ./
-RUN pip install --no-cache-dir -r requirements.txt
+COPY requirements-mock.txt ./
+RUN pip install --no-cache-dir -r requirements-mock.txt
 COPY . .
 
 FROM node:22-slim AS frontend

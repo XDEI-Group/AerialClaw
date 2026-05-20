@@ -49,3 +49,14 @@ jobs:
       - uses: actions/checkout@v4
       - name: Build mock-mode Docker image
         run: docker build -t aerialclaw:ci .
+      - name: Run mock-mode Docker smoke test
+        run: |
+          docker run -d --name aerialclaw-ci -p 5001:5001 aerialclaw:ci
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:5001/api/status 2>/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          docker logs aerialclaw-ci
+          exit 1
