@@ -103,17 +103,59 @@ mkdir -p ~/.simulation-gazebo/models
 
 ## Running the Simulation
 
-### Quick Start (recommended)
+### Guided Start (recommended for reviewers)
+
+Use the repository scripts instead of manually guessing PX4/Gazebo paths. The
+flow is: doctor → setup → start simulator → start backend → verify status.
 
 ```bash
-# Using PX4's built-in launch (manages Gazebo automatically)
-cd PX4-Autopilot
-export CMAKE_POLICY_VERSION_MINIMUM=3.5
-export PX4_GZ_WORLD=default      # or: urban_rescue
-make px4_sitl gz_x500
+# 1) Read-only diagnosis. It prints exactly what is missing.
+./scripts/doctor_gazebo.sh urban_rescue x500_lidar_2d_cam
+
+# 2) First-time setup. This can take 10-30 minutes because PX4 is built locally.
+./scripts/setup_px4.sh
+
+# 3) Start DDS Agent + Gazebo + PX4 SITL. Keep this terminal open.
+./scripts/start_sim.sh urban_rescue x500_lidar_2d_cam
+
+# 4) In another terminal, start AerialClaw against PX4/Gazebo.
+SIM_ADAPTER=px4 PX4_GZ_WORLD=urban_rescue PX4_SIM_MODEL=x500_lidar_2d_cam python server.py
+
+# 5) Verify backend and sensor bridge status.
+curl http://localhost:5001/api/status
+curl http://localhost:5001/api/sensor/status
+
+# 6) Optional live diagnosis after the simulator is running.
+./scripts/doctor_gazebo.sh urban_rescue x500_lidar_2d_cam --live
+```
+
+If the bundled sensor model cannot be resolved locally, use the standard PX4
+fallback path:
+
+```bash
+./scripts/start_sim.sh default x500
+SIM_ADAPTER=px4 PX4_GZ_WORLD=default PX4_SIM_MODEL=x500 python server.py
+```
+
+### What the scripts do
+
+| Script | Mutates system? | Purpose |
+|--------|------------------|---------|
+| `scripts/doctor_gazebo.sh` | No | Checks Gazebo, PX4 checkout/build, worlds, models, MicroXRCEAgent, MAVSDK, and optional live processes/topics. |
+| `scripts/setup_px4.sh` | Yes | Clones/builds PX4, downloads PX4 models, copies AerialClaw worlds and bundled sensor model, checks MAVSDK pieces. |
+| `scripts/start_sim.sh` | Starts processes | Starts Micro XRCE-DDS Agent, Gazebo server, and PX4 SITL with clear log locations. |
+
+Log files printed by `scripts/start_sim.sh`:
+
+```text
+/tmp/aerialclaw_dds.log
+/tmp/aerialclaw_gz.log
+/tmp/aerialclaw_px4.log
 ```
 
 ### Manual Start (advanced)
+
+Use this only when debugging the scripts.
 
 ```bash
 # Terminal 1: DDS Agent
@@ -123,44 +165,25 @@ MicroXRCEAgent udp4 -p 8888
 export PX4_GZ_MODELS="<PX4_DIR>/Tools/simulation/gz/models"
 export PX4_GZ_WORLDS="<PX4_DIR>/Tools/simulation/gz/worlds"
 export GZ_SIM_RESOURCE_PATH="$HOME/.simulation-gazebo/models:$PX4_GZ_MODELS:$PX4_GZ_WORLDS"
-gz sim --verbose=1 -r -s "${PX4_GZ_WORLDS}/default.sdf"    # server only
-# gz sim -g                                                  # GUI (optional, separate terminal)
+gz sim --verbose=1 -r -s "${PX4_GZ_WORLDS}/urban_rescue.sdf"
+# gz sim -g  # GUI (optional, separate terminal)
 
 # Terminal 3: PX4 SITL (STANDALONE mode — connects to already-running Gazebo)
 export PX4_SYS_AUTOSTART=4001
 export PX4_SIMULATOR=gz
-export PX4_GZ_WORLD=default
-export PX4_SIM_MODEL=x500
+export PX4_GZ_WORLD=urban_rescue
+export PX4_SIM_MODEL=x500_lidar_2d_cam
 export PX4_GZ_STANDALONE=1
 PX4_BUILD="<PX4_DIR>/build/px4_sitl_default"
 cd "$PX4_BUILD"
 ./bin/px4 "$PX4_BUILD" -s "${PX4_BUILD}/etc/init.d-posix/rcS"
 
 # Terminal 4: AerialClaw
-cd AerialClaw
-source venv/bin/activate
-python server.py
+SIM_ADAPTER=px4 PX4_GZ_WORLD=urban_rescue PX4_SIM_MODEL=x500_lidar_2d_cam python server.py
 # Open http://localhost:5001
 ```
 
-> **Important**: Use STANDALONE mode (`PX4_GZ_STANDALONE=1`) with the PX4 SITL binary produced by your local PX4 build directly.
-> The `make px4_sitl gz_x500` shortcut works for basic testing. Custom sensor models can be used when the corresponding Gazebo model files are available locally and `PX4_SIM_MODEL` is set accordingly.
-
-### Using the start script (recommended)
-
-```bash
-# First time: set up PX4 environment
-./scripts/setup_px4.sh
-
-# Launch simulation (DDS Agent + Gazebo + PX4 SITL)
-./scripts/start_sim.sh              # default world
-./scripts/start_sim.sh urban_rescue  # urban rescue scenario
-
-# In another terminal:
-source venv/bin/activate
-python server.py
-# Open http://localhost:5001
-```
+> **Important**: Use STANDALONE mode (`PX4_GZ_STANDALONE=1`) with the PX4 SITL binary produced by your local PX4 build directly. The `make px4_sitl gz_x500` shortcut is useful as a PX4 build test, but the repository scripts are the recommended AerialClaw path because they also install worlds/models and print diagnostics.
 
 ## Sensor Configuration
 

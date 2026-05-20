@@ -30,6 +30,7 @@ REQUIRED_FILES = [
     "tests/test_mock_adapter.py",
     "tests/test_server_smoke.py",
     "scripts/smoke_mock.sh",
+    "scripts/doctor_gazebo.sh",
 ]
 
 STALE_PATTERNS = [

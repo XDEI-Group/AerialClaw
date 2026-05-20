@@ -235,11 +235,13 @@ This script automatically:
 - Clones PX4-Autopilot from the official repository
 - Applies macOS ARM64 build patches (CMake policy, protobuf, VLA warnings)
 - Downloads PX4 Gazebo base models from the official model repository
-- Uses PX4's standard `x500` model by default; if an optional custom sensor model is present, it is installed automatically
+- Installs the bundled `x500_lidar_2d_cam` sensor model when available, with PX4 `x500` as fallback
 - Installs custom Gazebo worlds (urban_rescue: buildings, ruins, victims, fire)
 - Builds PX4 SITL
+- Prints a guided doctor summary with the next command to run
 
 > First build takes approximately 10-30 minutes. For macOS ARM64 troubleshooting, see [docs/SIMULATION_SETUP.md](docs/SIMULATION_SETUP.md).
+> Before/after setup, use `./scripts/doctor_gazebo.sh urban_rescue x500_lidar_2d_cam` to check missing dependencies and `--live` to inspect a running simulator.
 
 ## Quick Start
 
@@ -256,14 +258,14 @@ SIM_ADAPTER=mock python server.py
 
 **Terminal 1 — Simulation** (after running `./scripts/setup_px4.sh`)
 ```bash
-./scripts/start_sim.sh              # default world
-# or: ./scripts/start_sim.sh urban_rescue
+./scripts/doctor_gazebo.sh urban_rescue x500_lidar_2d_cam
+./scripts/start_sim.sh urban_rescue x500_lidar_2d_cam
 ```
 
 **Terminal 2 — AerialClaw Service**
 ```bash
-source venv/bin/activate
-python server.py
+source venv/bin/activate  # if using a virtual environment
+SIM_ADAPTER=px4 PX4_GZ_WORLD=urban_rescue PX4_SIM_MODEL=x500_lidar_2d_cam python server.py
 ```
 
 **Terminal 3 — Browser**

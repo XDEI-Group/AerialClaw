@@ -65,24 +65,37 @@ Expected results:
 - The backend starts on `http://localhost:5001`.
 - The Web console can be opened and initialized with the mock adapter.
 
-## Full simulation path
+## Guided PX4/Gazebo path
 
-The full demo uses PX4 SITL + Gazebo Harmonic and is heavier. Use this only after the mock path works.
+The second reviewer path uses PX4 SITL + Gazebo Harmonic. It is heavier than mock mode, but the repository includes guided scripts so reviewers do not have to infer paths manually.
 
 ```bash
-./scripts/setup_px4.sh
-./scripts/start_sim.sh urban_rescue
+# Diagnose what is already available and what is missing.
+./scripts/doctor_gazebo.sh urban_rescue x500_lidar_2d_cam
 
-# In another terminal:
-source venv/bin/activate
-SIM_ADAPTER=px4 python server.py
+# First-time setup: clone/build PX4, install models/worlds, install/check MAVSDK pieces.
+./scripts/setup_px4.sh
+
+# Launch DDS Agent + Gazebo + PX4 SITL.
+./scripts/start_sim.sh urban_rescue x500_lidar_2d_cam
+
+# In another terminal, start AerialClaw against PX4/Gazebo.
+SIM_ADAPTER=px4 PX4_GZ_WORLD=urban_rescue PX4_SIM_MODEL=x500_lidar_2d_cam python server.py
+
+# Verify backend and sensor bridge status.
+curl http://localhost:5001/api/status
+curl http://localhost:5001/api/sensor/status
+
+# Optional live diagnosis once the simulation is running.
+./scripts/doctor_gazebo.sh urban_rescue x500_lidar_2d_cam --live
 ```
 
 Notes:
 
-- `scripts/setup_px4.sh` installs PX4/Gazebo assets and copies AerialClaw worlds.
-- If the custom sensor model is not available in the repository, the script falls back to the standard PX4 `x500` model and prints a warning.
-- Gazebo/PX4 setup can take 10-30 minutes on the first run.
+- `scripts/doctor_gazebo.sh` is read-only and explains the next command when something is missing.
+- `scripts/setup_px4.sh` installs PX4/Gazebo assets and copies AerialClaw worlds and the bundled `x500_lidar_2d_cam` sensor model when present.
+- `scripts/start_sim.sh` prints log locations and falls back to the standard PX4 `x500` model when the sensor model cannot be resolved locally.
+- Gazebo/PX4 setup can take 10-30 minutes on the first run and depends on OS-level Gazebo/PX4 build requirements.
 
 ## Optional LLM configuration
 

@@ -15,10 +15,11 @@
 #   2. Clones PX4-Autopilot (if not present)
 #   3. Applies macOS ARM64 build patches
 #   4. Downloads PX4 Gazebo base models
-#   5. Installs optional custom drone model if present; otherwise falls back to PX4 x500
-#   6. Installs AerialClaw custom Gazebo worlds (urban_rescue)
+#   5. Installs the bundled sensor model when present; otherwise falls back to PX4 x500
+#   6. Installs AerialClaw Gazebo worlds (urban_rescue)
 #   7. Builds PX4 SITL
 #   8. Installs Micro XRCE-DDS Agent (if not present)
+#   9. Runs a guided doctor summary
 #
 # After running this script, use scripts/start_sim.sh to launch.
 # ============================================================
@@ -132,18 +133,17 @@ fi
 
 # ── Step 4: Install AerialClaw Custom Model ────────────────────
 
-info "Checking optional AerialClaw custom drone model..."
+info "Checking AerialClaw bundled sensor model..."
 
-# Optional customized sensor model. The repository remains runnable with PX4's
-# standard x500 model when this directory is absent.
 CUSTOM_MODEL_SRC="${PROJECT_DIR}/sim/models/x500_lidar_2d_cam"
 if [ -d "$CUSTOM_MODEL_SRC" ]; then
+    rm -rf "$MODEL_DIR/x500_lidar_2d_cam"
     cp -r "$CUSTOM_MODEL_SRC" "$MODEL_DIR/"
-    ok "AerialClaw x500_lidar_2d_cam installed"
+    ok "AerialClaw x500_lidar_2d_cam installed to $MODEL_DIR"
 else
-    warn "Optional custom model not found at $CUSTOM_MODEL_SRC"
+    warn "Bundled sensor model not found at $CUSTOM_MODEL_SRC"
     echo "  Falling back to PX4 standard model: x500"
-    echo "  Use ./scripts/start_sim.sh urban_rescue x500 for the default simulation path."
+    echo "  Use ./scripts/start_sim.sh default x500 for the fallback simulation path."
 fi
 
 # ── Step 5: Install Custom Gazebo Worlds ───────────────────────
@@ -242,8 +242,18 @@ echo "Models:      ${MODEL_DIR}/"
 echo "Worlds:      ${PX4_WORLDS}/"
 echo ""
 echo "Next steps:"
-echo "  1. Start simulation:  ./scripts/start_sim.sh"
-echo "  2. Start AerialClaw:  python server.py"
-echo "  3. Open browser:      http://localhost:5001"
+echo "  1. Check setup:       ./scripts/doctor_gazebo.sh urban_rescue x500_lidar_2d_cam"
+echo "  2. Start simulation:  ./scripts/start_sim.sh urban_rescue x500_lidar_2d_cam"
+echo "  3. Start AerialClaw:  SIM_ADAPTER=px4 PX4_GZ_WORLD=urban_rescue PX4_SIM_MODEL=x500_lidar_2d_cam python server.py"
+echo "  4. Open browser:      http://localhost:5001"
 echo ""
+echo "Fallback without bundled sensors:"
+echo "  ./scripts/start_sim.sh default x500"
+echo "  SIM_ADAPTER=px4 PX4_GZ_WORLD=default PX4_SIM_MODEL=x500 python server.py"
+echo ""
+if [ -x "${SCRIPT_DIR}/doctor_gazebo.sh" ]; then
+    echo "Doctor summary:"
+    "${SCRIPT_DIR}/doctor_gazebo.sh" urban_rescue x500_lidar_2d_cam || true
+    echo ""
+fi
 echo "See docs/SIMULATION_SETUP.md for detailed configuration."

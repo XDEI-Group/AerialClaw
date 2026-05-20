@@ -236,11 +236,13 @@ LLM_MODEL=gpt-4o                          # 模型名称
 - 克隆 PX4-Autopilot 官方仓库
 - 应用 macOS ARM64 编译补丁（CMake 策略、protobuf、VLA 警告）
 - 从官方模型仓库下载 PX4 Gazebo 基础模型
-- 默认使用 PX4 标准 `x500` 模型；如果仓库中提供可选自定义传感器模型，脚本会自动安装
+- 安装仓库自带的 `x500_lidar_2d_cam` 传感器模型；不可用时 fallback 到 PX4 标准 `x500`
 - 安装自定义 Gazebo 场景（urban_rescue：建筑、废墟、受害者、火灾）
 - 编译 PX4 SITL
+- 输出 doctor 检查摘要和下一步命令
 
 > 首次编译约需 10-30 分钟。macOS ARM64 用户如遇问题，参见 [docs/SIMULATION_SETUP.md](docs/SIMULATION_SETUP.md)。
+> 配置前后可用 `./scripts/doctor_gazebo.sh urban_rescue x500_lidar_2d_cam` 检查缺失项；仿真启动后加 `--live` 检查运行状态。
 
 ## 快速开始
 
@@ -257,14 +259,14 @@ SIM_ADAPTER=mock python server.py
 
 **终端 1 — 仿真环境**（需先执行 `./scripts/setup_px4.sh`）
 ```bash
-./scripts/start_sim.sh              # 默认场景
-# 或: ./scripts/start_sim.sh urban_rescue
+./scripts/doctor_gazebo.sh urban_rescue x500_lidar_2d_cam
+./scripts/start_sim.sh urban_rescue x500_lidar_2d_cam
 ```
 
 **终端 2 — AerialClaw 主服务**
 ```bash
-source venv/bin/activate
-python server.py
+source venv/bin/activate  # 如果使用虚拟环境
+SIM_ADAPTER=px4 PX4_GZ_WORLD=urban_rescue PX4_SIM_MODEL=x500_lidar_2d_cam python server.py
 ```
 
 **终端 3 — 浏览器访问**
