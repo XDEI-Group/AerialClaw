@@ -1,10 +1,10 @@
-# Reviewer Checklist
+# Run Checklist
 
-This checklist summarizes the evidence package for ACM Multimedia Open Source Software Track reviewers.
+This checklist summarizes the evidence package for ACM Multimedia Open Source Software Track users.
 
-## Quick artifact path
+## Quick quick path
 
-Use `ARTIFACT.md` first. It describes a five-minute mock-mode evaluation path that does not require PX4, Gazebo, AirSim, GPUs, or real UAV hardware.
+Use `QUICKSTART.md` first. It describes a five-minute mock mode evaluation path that does not require PX4, Gazebo, AirSim, GPUs, or real UAV hardware.
 
 Expected quick checks:
 
@@ -25,23 +25,23 @@ bash scripts/smoke_mock.sh
 SIM_ADAPTER=mock python server.py
 ```
 
-## Reproducibility gates included in this repository
+## Run checks included in this repository
 
 - `pyproject.toml` configures pytest so tests run without manually setting `PYTHONPATH`.
 - `tests/test_mock_adapter.py` validates the pure in-memory UAV adapter.
 - `tests/test_adapter_manager.py` validates adapter registration and switching behavior.
 - `tests/test_server_smoke.py` validates Flask app import and `/api/status`.
-- `tests/test_artifact_consistency.py` runs the repository consistency checker.
-- `scripts/check_artifact.py` fails on stale documentation references, missing artifact files, or accidental absolute-path duplicate trees.
-- `scripts/smoke_mock.sh` runs the complete local mock artifact smoke gate.
+- `tests/test_repository_consistency.py` runs the repository consistency checker.
+- `scripts/check_repository.py` fails on stale documentation references, missing repository files, or accidental absolute-path duplicate trees.
+- `scripts/smoke_mock.sh` runs the complete local mock demo smoke gate.
 - `scripts/doctor_gazebo.sh` checks the optional PX4/Gazebo path and prints actionable next steps without modifying the system.
-- `.github/workflows/ci.yml` runs artifact checks, Python compile, pytest, Web UI lint/build, Docker image build, and a Docker `/api/status` smoke test.
-- `Dockerfile` builds a lightweight mock-mode image for reviewer evaluation using `requirements-mock.txt`.
-- `compose.yml` provides a `docker compose up --build` reviewer path with a `/api/status` healthcheck.
+- `.github/workflows/ci.yml` runs repository checks, Python compile, pytest, Web UI lint/build, Docker image build, and a Docker `/api/status` smoke test.
+- `Dockerfile` builds a lightweight mock mode image for user evaluation using `requirements-mock.txt`.
+- `compose.yml` provides a `docker compose up --build` user path with a `/api/status` healthcheck.
 
 ## Scope boundaries
 
-The quick artifact is intentionally mock-mode. PX4/Gazebo is the guided second path: it is supported by repository scripts, but it still requires heavyweight OS-level simulator dependencies. AirSim/OpenFly remains an external integration path and is not the public default artifact path.
+The quick repository package is intentionally mock mode. PX4/Gazebo is the guided second path: it is supported by repository scripts, but it still requires heavyweight OS-level simulator dependencies. AirSim/OpenFly remains an external integration path and is not the public default quick path.
 
 For PX4/Gazebo review, use:
 
@@ -61,7 +61,7 @@ The public repository should not claim shipped SDKs for clients that are only pr
 
 At the time of hardening, the local smoke gate is expected to report:
 
-- `python scripts/check_artifact.py` — pass
+- `python scripts/check_repository.py` — pass
 - `python -m compileall -q .` — pass
 - `python -m pytest` — 10 tests pass
 - `cd ui && npm run lint` — pass with no warnings/errors
@@ -72,6 +72,6 @@ At the time of hardening, the local smoke gate is expected to report:
 
 ## Remaining known limitations
 
-- Full PX4/Gazebo reproducibility is heavier than the mock artifact and should be treated as a guided integration validation path rather than the five-minute smoke artifact.
-- AirSim/OpenFly validation depends on external simulator assets and should not be presented as the public default artifact path.
+- Full PX4/Gazebo repeatability is heavier than the mock repository package and should be treated as a guided integration validation path rather than the five-minute smoke repository package.
+- AirSim/OpenFly validation depends on external simulator assets and should not be presented as the public default quick path.
 - The test suite is now suitable for smoke evaluation, but not yet a comprehensive safety/flight-control verification suite.

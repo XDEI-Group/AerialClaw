@@ -1,7 +1,7 @@
 from pathlib import Path
 
 
-def test_readme_documents_all_runnable_reviewer_paths():
+def test_readme_documents_all_runnable_user_paths():
     readme = Path("README.md").read_text(encoding="utf-8")
     for expected in [
         "docker compose up --build",
@@ -17,7 +17,7 @@ def test_readme_documents_all_runnable_reviewer_paths():
         assert expected in readme
 
 
-def test_compose_reviewer_path_exists_and_uses_mock_adapter():
+def test_compose_user_path_exists_and_uses_mock_adapter():
     compose = Path("compose.yml")
     assert compose.exists()
     text = compose.read_text(encoding="utf-8")

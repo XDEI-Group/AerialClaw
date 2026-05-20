@@ -88,7 +88,7 @@
 | `robot_profile/BODY.md` | 记录硬件配置与性能参数 | *传感器类型，飞行性能边界* |
 | `robot_profile/WORLD_MAP.md` | 构建环境特征知识库 | *已知区域的地标与风险点* |
 
-运行态经验与技能统计文件会在本地实验过程中生成，公开仓库中刻意不提交这些生成内容，以避免把实验日志、坐标或运行缓存混入开源 artifact。
+运行态经验与技能统计文件会在本地实验过程中生成，公开仓库中刻意不提交这些生成内容，以避免把实验日志、坐标或运行缓存混入开源 repository package。
 
 ### 技能体系
 
@@ -177,11 +177,11 @@
 
 ## 安装与部署
 
-AerialClaw 提供三条可运行路径。第一次使用或评审时建议先跑 Docker mock；本地开发走 local mock；需要完整仿真时再走 PX4/Gazebo。
+AerialClaw 提供三条可运行路径。第一次使用或运行时建议先跑 Docker mock；本地开发走 local mock；需要完整仿真时再走 PX4/Gazebo。
 
 ### 路径 1 — Docker mock 模式（推荐首次运行）
 
-这是最快的可复现演示路径。它**不需要** PX4、Gazebo、AirSim、GPU、真实无人机或 LLM API Key。
+这是最快的可运行演示路径。它**不需要** PX4、Gazebo、AirSim、GPU、真实无人机或 LLM API Key。
 
 ```bash
 git clone https://github.com/XDEI-Group/AerialClaw.git
@@ -208,7 +208,7 @@ curl http://localhost:5001/api/status
 {"initialized": true, "mode": "manual", "current_robot": "HOST_DEVICE"}
 ```
 
-Docker 镜像刻意使用 `requirements-mock.txt`，定位是轻量评审镜像，不包含完整 PX4/Gazebo/AirSim 依赖。
+Docker 镜像刻意使用 `requirements-mock.txt`，定位是轻量运行镜像，不包含完整 PX4/Gazebo/AirSim 依赖。
 
 ### 路径 2 — 本地 mock 模式（开发）
 
@@ -398,8 +398,8 @@ AerialClaw/
 │   ├── doctor_gazebo.sh         #   只读 PX4/Gazebo 配置诊断
 │   ├── setup_px4.sh             #   一键 PX4 + Gazebo 环境搭建
 │   ├── start_sim.sh             #   仿真启动器
-│   ├── smoke_mock.sh            #   本地 mock artifact smoke gate
-│   └── check_artifact.py        #   仓库一致性检查器
+│   ├── smoke_mock.sh            #   本地 mock demo smoke gate
+│   └── check_repository package.py        #   仓库一致性检查器
 │
 ├── ui/                          # Web 监控界面（React）
 │   └── src/components/          #   React 驾驶舱、地图、技能、传感器与组件
@@ -434,9 +434,9 @@ AerialClaw/
 - [ ] 多平台客户端 SDK · 端云协同部署打包
 - [ ] 多智能体协作 · MCP 标准接口 · 跨设备共享学习
 
-## Artifact 评审指南
+## Repository Package 运行指南
 
-面向评审员的快速启动、mock-mode 复现路径、预期输出与已知限制见 [ARTIFACT.md](ARTIFACT.md)。
+面向使用者的快速启动、mock mode 运行路径、预期输出与已知限制见 [QUICKSTART.md](QUICKSTART.md)。
 
 ## 参与贡献
 

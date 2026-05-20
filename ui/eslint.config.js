@@ -20,7 +20,7 @@ export default [
     },
     rules: {
       ...reactHooks.configs.recommended.rules,
-      // Keep lint focused on correctness for the OSS artifact smoke gate.
+      // Keep lint focused on correctness for the repository demo smoke gate.
       // This legacy UI intentionally keeps some draft widgets/imports around for demos.
       'no-unused-vars': 'off',
       // Existing UI components use effects to synchronize derived UI state.

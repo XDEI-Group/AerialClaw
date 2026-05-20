@@ -1,6 +1,6 @@
 cff-version: 1.2.0
 title: "AerialClaw: Towards Personal AI Agents for General Autonomous Aerial Systems"
-message: "If you use AerialClaw in academic work, please cite this software artifact."
+message: "If you use AerialClaw in academic work, please cite this software."
 type: software
 authors:
   - name: XDEI Group

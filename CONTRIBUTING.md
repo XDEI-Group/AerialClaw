@@ -31,7 +31,7 @@ cd ui && npm install && npm run build
 Good first contributions include:
 
 - adapter fixes
-- mock-mode examples
+- mock mode examples
 - documentation improvements
 - tests for skills, safety, memory, and planner fallback logic
 - simulator setup fixes

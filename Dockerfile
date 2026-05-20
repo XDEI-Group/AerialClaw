@@ -1,4 +1,4 @@
-# Lightweight reviewer image for AerialClaw mock-mode evaluation.
+# Lightweight user image for AerialClaw mock mode evaluation.
 # It intentionally does not include PX4/Gazebo/AirSim.
 FROM python:3.12-slim AS backend
 WORKDIR /app

@@ -1,6 +1,6 @@
-# AerialClaw Artifact Guide
+# AerialClaw Repository Package Guide
 
-This guide is written for artifact reviewers who need a quick, reproducible path before attempting the full PX4/Gazebo simulation.
+This guide is written for repository package users who need a quick, repeatable path before attempting the full PX4/Gazebo simulation.
 
 ## What is included
 
@@ -17,17 +17,17 @@ AerialClaw is an open-source framework for LLM-driven autonomous aerial agents. 
 
 ## One-command smoke gate
 
-After installing Python and Web UI dependencies, reviewers can run:
+After installing Python and Web UI dependencies, users can run:
 
 ```bash
 bash scripts/smoke_mock.sh
 ```
 
-This runs artifact consistency checks, Python compile, pytest, Web UI lint, and Web UI build.
+This runs repository consistency checks, Python compile, pytest, Web UI lint, and Web UI build.
 
-## Quick path: Docker mock-mode evaluation
+## Quick path: Docker mock mode evaluation
 
-This is the recommended first-pass reviewer path. It does **not** require PX4, Gazebo, AirSim, a GPU, a real drone, or an LLM API key. The image intentionally uses `requirements-mock.txt` instead of the full simulation/ML dependency set.
+This is the recommended first-pass user path. It does **not** require PX4, Gazebo, AirSim, a GPU, a real drone, or an LLM API key. The image intentionally uses `requirements-mock.txt` instead of the full simulation/ML dependency set.
 
 ```bash
 git clone https://github.com/XDEI-Group/AerialClaw.git
@@ -44,9 +44,9 @@ docker run --rm -p 5001:5001 aerialclaw:review
 # Or check in another terminal: curl http://localhost:5001/api/status
 ```
 
-## Local mock-mode evaluation
+## Local mock mode evaluation
 
-If Docker is unavailable, reviewers can run the same mock path locally:
+If Docker is unavailable, users can run the same mock path locally:
 
 ```bash
 python3.10 -m venv venv
@@ -72,7 +72,7 @@ Expected results:
 
 ## Guided PX4/Gazebo path
 
-The second reviewer path uses PX4 SITL + Gazebo Harmonic. It is heavier than mock mode, but the repository includes guided scripts so reviewers do not have to infer paths manually.
+The second user path uses PX4 SITL + Gazebo Harmonic. It is heavier than mock mode, but the repository includes guided scripts so users do not have to infer paths manually.
 
 ```bash
 # Diagnose what is already available and what is missing.
@@ -111,7 +111,7 @@ cp .env.example .env
 # edit ACTIVE_PROVIDER, LLM_BASE_URL, LLM_API_KEY, LLM_MODEL
 ```
 
-Without an LLM key, reviewers can still evaluate package structure, tests, Web UI build, and mock adapter behavior.
+Without an LLM key, users can still evaluate package structure, tests, Web UI build, and mock adapter behavior.
 
 ## Known limitations
 
@@ -119,7 +119,7 @@ Without an LLM key, reviewers can still evaluate package structure, tests, Web U
 - PX4/Gazebo camera and LiDAR topics depend on local Gazebo bindings and model availability.
 - Multi-platform device clients are described by the protocol documentation but are not shipped as production SDK packages in this repository yet.
 
-## Review checklist
+## Run checklist
 
 ```bash
 python -m compileall -q .

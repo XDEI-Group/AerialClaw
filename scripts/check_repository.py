@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Reviewer-facing repository consistency checks.
+"""User-facing repository consistency checks.
 
-This catches stale paths/claims that make OSS artifacts look unreproducible.
+This catches stale paths/claims that make OSS repository packages look unrepeatable.
 It is intentionally lightweight and runs without PX4/Gazebo/AirSim.
 """
 from __future__ import annotations
@@ -16,8 +16,8 @@ REQUIRED_FILES = [
     "README.md",
     "README_CN.md",
     "LICENSE",
-    "ARTIFACT.md",
-    "REVIEWER_CHECKLIST.md",
+    "QUICKSTART.md",
+    "RUN_CHECKLIST.md",
     "Dockerfile",
     "compose.yml",
     ".dockerignore",
@@ -57,8 +57,8 @@ STALE_PATTERNS = [
 
 TEXT_GLOBS = [
     "README*.md",
-    "ARTIFACT.md",
-    "REVIEWER_CHECKLIST.md",
+    "QUICKSTART.md",
+    "RUN_CHECKLIST.md",
     "CONTRIBUTING.md",
     "SECURITY.md",
     "docs/*.md",
@@ -75,7 +75,7 @@ def fail(msg: str) -> None:
 def main() -> None:
     missing = [path for path in REQUIRED_FILES if not (ROOT / path).exists()]
     if missing:
-        fail("missing required artifact files: " + ", ".join(missing))
+        fail("missing required repository files: " + ", ".join(missing))
 
     offenders: list[str] = []
     combined = re.compile("|".join(STALE_PATTERNS))
@@ -88,13 +88,13 @@ def main() -> None:
                 if combined.search(line):
                     offenders.append(f"{path.relative_to(ROOT)}:{i}: {line.strip()}")
     if offenders:
-        fail("stale artifact references found:\n" + "\n".join(offenders))
+        fail("stale repository references found:\n" + "\n".join(offenders))
 
     absolute_duplicates = list((ROOT / "Users").glob("**/*")) if (ROOT / "Users").exists() else []
     if absolute_duplicates:
         fail("repository contains accidental absolute-path duplicate tree under Users/")
 
-    print("artifact consistency checks passed")
+    print("repository consistency checks passed")
 
 
 if __name__ == "__main__":

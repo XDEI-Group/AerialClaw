@@ -87,7 +87,7 @@ The system possesses basic exception handling capabilities: path replanning when
 | `robot_profile/BODY.md` | Records hardware configuration and performance parameters | *Sensor types, flight performance boundaries* |
 | `robot_profile/WORLD_MAP.md` | Builds environmental feature knowledge base | *Landmarks and risk points in known areas* |
 
-Runtime experience and skill-statistics files are generated during experiments and intentionally excluded from the public repository. This keeps the artifact clean while preserving the mechanism that can create those files locally.
+Runtime experience and skill-statistics files are generated during experiments and intentionally excluded from the public repository. This keeps the repository package clean while preserving the mechanism that can create those files locally.
 
 ### Integrated Skill System
 
@@ -176,11 +176,11 @@ The system supports **real-time Manual / AI mode switching**, allowing operators
 
 ## Installation and Deployment
 
-AerialClaw has three runnable paths. Start with Docker mock mode if you are a reviewer or first-time user; then use local mock mode for development; finally use the PX4/Gazebo path when you want the full simulator.
+AerialClaw has three runnable paths. Start with Docker mock mode if you are a user or first-time user; then use local mock mode for development; finally use the PX4/Gazebo path when you want the full simulator.
 
 ### Path 1 — Docker mock mode (recommended first run)
 
-This path is the fastest reproducible demo. It does **not** require PX4, Gazebo, AirSim, a GPU, a real drone, or an LLM API key.
+This path is the fastest repeatable demo. It does **not** require PX4, Gazebo, AirSim, a GPU, a real drone, or an LLM API key.
 
 ```bash
 git clone https://github.com/XDEI-Group/AerialClaw.git
@@ -207,7 +207,7 @@ Expected response contains fields similar to:
 {"initialized": true, "mode": "manual", "current_robot": "HOST_DEVICE"}
 ```
 
-The Docker image intentionally uses `requirements-mock.txt`, so it is a lightweight reviewer image rather than a full PX4/Gazebo/AirSim image.
+The Docker image intentionally uses `requirements-mock.txt`, so it is a lightweight user image rather than a full PX4/Gazebo/AirSim image.
 
 ### Path 2 — Local mock mode (development)
 
@@ -397,8 +397,8 @@ AerialClaw/
 │   ├── doctor_gazebo.sh         #   Read-only PX4/Gazebo setup doctor
 │   ├── setup_px4.sh             #   One-click PX4 + Gazebo setup
 │   ├── start_sim.sh             #   Simulation launcher
-│   ├── smoke_mock.sh            #   Local mock artifact smoke gate
-│   └── check_artifact.py        #   Repository consistency checker
+│   ├── smoke_mock.sh            #   Local mock demo smoke gate
+│   └── check_repository package.py        #   Repository consistency checker
 │
 ├── ui/                          # Web monitoring interface (React)
 │   └── src/components/          #   React cockpit, map, skill, sensor, and widget components
@@ -433,9 +433,9 @@ AerialClaw/
 - [ ] Production multi-platform client SDKs · Hybrid edge-cloud packaging
 - [ ] Multi-agent collaboration · MCP standard interface · Cross-device shared learning
 
-## Artifact Evaluation
+## Repository Package Evaluation
 
-For a reviewer-focused quick start, mock-mode path, expected outputs, and known limitations, see [ARTIFACT.md](ARTIFACT.md).
+For a quick start, runnable demo path, expected outputs, and known limitations, see [QUICKSTART.md](QUICKSTART.md).
 
 ## Contribution
 

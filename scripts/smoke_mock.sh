@@ -41,7 +41,7 @@ if [ "${#PYTHON_CMD[@]}" -eq 0 ]; then
 fi
 
 echo "Using Python: $("${PYTHON_CMD[@]}" --version)"
-"${PYTHON_CMD[@]}" scripts/check_artifact.py
+"${PYTHON_CMD[@]}" scripts/check_repository.py
 "${PYTHON_CMD[@]}" -m compileall -q adapters brain config llm memory runtime scripts sim skills swarm server.py
 "${PYTHON_CMD[@]}" -m pytest
 (
@@ -57,4 +57,4 @@ echo "Using Python: $("${PYTHON_CMD[@]}" --version)"
   npm run build
 )
 
-echo "mock artifact smoke checks passed"
+echo "mock demo smoke checks passed"

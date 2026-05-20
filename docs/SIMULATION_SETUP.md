@@ -103,7 +103,7 @@ mkdir -p ~/.simulation-gazebo/models
 
 ## Running the Simulation
 
-### Guided Start (recommended for reviewers)
+### Guided Start (recommended for users)
 
 Use the repository scripts instead of manually guessing PX4/Gazebo paths. The
 flow is: doctor → setup → start simulator → start backend → verify status.
@@ -189,7 +189,7 @@ SIM_ADAPTER=px4 PX4_GZ_WORLD=urban_rescue PX4_SIM_MODEL=x500_lidar_2d_cam python
 
 ### Default Sensor Setup
 
-The default reviewer path uses PX4/Gazebo standard `x500`. Camera/LiDAR streaming requires a sensor-enabled Gazebo model. If you provide a local custom model, set `PX4_SIM_MODEL` to that model name and ensure Gazebo can resolve its SDF files.
+The default user path uses PX4/Gazebo standard `x500`. Camera/LiDAR streaming requires a sensor-enabled Gazebo model. If you provide a local custom model, set `PX4_SIM_MODEL` to that model name and ensure Gazebo can resolve its SDF files.
 The Web console does **not** read Gazebo topics directly. `sim/gz_sensor_bridge.py`
 subscribes to Gazebo Transport camera/LiDAR topics and `server.py` forwards the
 latest frames to the UI via Socket.IO events (`sensor_cameras`, `sensor_lidar`).

@@ -17,8 +17,8 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install pytest
-      - name: Artifact consistency check
-        run: python scripts/check_artifact.py
+      - name: Repository consistency check
+        run: python scripts/check_repository.py
       - name: Python compile check
         run: python -m compileall -q .
       - name: Python tests
@@ -47,9 +47,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Build mock-mode Docker image
+      - name: Build mock mode Docker image
         run: docker build -t aerialclaw:ci .
-      - name: Run mock-mode Docker smoke test
+      - name: Run mock mode Docker smoke test
         run: |
           docker run -d --name aerialclaw-ci -p 5001:5001 aerialclaw:ci
           for i in $(seq 1 30); do
@@ -62,5 +62,5 @@ jobs:
           docker logs aerialclaw-ci
           docker rm -f aerialclaw-ci || true
           exit 1
-      - name: Validate Docker Compose reviewer path
+      - name: Validate Docker Compose user path
         run: docker compose config

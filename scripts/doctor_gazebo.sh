@@ -2,7 +2,7 @@
 # ============================================================
 # AerialClaw — PX4/Gazebo guided setup doctor
 # ============================================================
-# This is a reviewer-facing diagnostic script. It does not install
+# This is a user-facing diagnostic script. It does not install
 # or modify anything; it checks whether the optional PX4/Gazebo path
 # is configured well enough to start and explains the next command
 # when something is missing.

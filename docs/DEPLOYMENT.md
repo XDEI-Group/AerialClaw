@@ -159,9 +159,9 @@ The safety envelope should remain active in both cloud and edge deployments; do 
 
 ---
 
-## Docker 部署（mock-mode）
+## Docker 部署（mock mode）
 
-The root `Dockerfile` is intended for lightweight mock-mode review, not PX4/Gazebo simulation.
+The root `Dockerfile` is intended for lightweight mock mode review, not PX4/Gazebo simulation.
 
 ```bash
 docker build -t aerialclaw .
@@ -222,7 +222,7 @@ curl http://localhost:5001/api/sensor/status
 
 ### 启动自检
 
-For reviewer smoke testing, run:
+For user smoke testing, run:
 
 ```bash
 python -m compileall -q adapters brain config llm memory runtime scripts sim skills swarm server.py

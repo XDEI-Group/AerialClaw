@@ -39,11 +39,11 @@ logs/
 # Runtime LLM config with API keys
 .aerialclaw_llm_config.json
 
-# Local development artifacts
+# Local development outputs
 .venv*/
 Users/
 
-# Generated runtime memory/profile artifacts
+# Generated runtime memory/profile outputs
 robot_profile/MEMORY.md
 robot_profile/SKILLS.md
 memory/vector_cache.json
