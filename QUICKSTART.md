@@ -34,11 +34,12 @@ git clone https://github.com/XDEI-Group/AerialClaw.git
 cd AerialClaw
 
 # Option A: Docker Compose
+# Windows users: start Docker Desktop first and wait until the Linux engine is running.
 docker compose up --build
 
 # Option B: plain Docker
-docker build -t aerialclaw:review .
-docker run --rm -p 5001:5001 aerialclaw:review
+docker build -t aerialclaw:demo .
+docker run --rm -p 5001:5001 aerialclaw:demo
 
 # Open http://localhost:5001
 # Or check in another terminal: curl http://localhost:5001/api/status
@@ -54,12 +55,24 @@ source venv/bin/activate
 pip install -r requirements.txt
 python -m pytest
 
+# Windows PowerShell activation uses: .\venv\Scripts\Activate.ps1
+# Windows CMD activation uses: venv\Scripts\activate.bat
+
 cd ui
 npm install
 npm run build
 cd ..
 
+# macOS / Linux
 SIM_ADAPTER=mock python server.py
+
+# Windows PowerShell
+$env:SIM_ADAPTER="mock"; python server.py
+
+# Windows CMD
+set SIM_ADAPTER=mock
+python server.py
+
 # Open http://localhost:5001
 ```
 

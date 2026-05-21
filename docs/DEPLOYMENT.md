@@ -161,7 +161,7 @@ The safety envelope should remain active in both cloud and edge deployments; do 
 
 ## Docker 部署（mock mode）
 
-The root `Dockerfile` is intended for lightweight mock mode review, not PX4/Gazebo simulation.
+The root `Dockerfile` is intended for lightweight mock mode deployment, not PX4/Gazebo simulation.
 
 ```bash
 docker build -t aerialclaw .

@@ -20,7 +20,7 @@ def test_gazebo_guidance_scripts_are_present_and_syntax_valid():
         assert result.returncode == 0, result.stderr
 
 
-def test_gazebo_doctor_mentions_actionable_review_path():
+def test_gazebo_doctor_mentions_actionable_run_path():
     text = Path("scripts/doctor_gazebo.sh").read_text(encoding="utf-8")
     for expected in [
         "./scripts/setup_px4.sh",

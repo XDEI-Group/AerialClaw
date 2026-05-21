@@ -5,8 +5,8 @@ def test_readme_documents_all_runnable_user_paths():
     readme = Path("README.md").read_text(encoding="utf-8")
     for expected in [
         "docker compose up --build",
-        "docker build -t aerialclaw:review .",
-        "docker run --rm -p 5001:5001 aerialclaw:review",
+        "docker build -t aerialclaw:demo .",
+        "docker run --rm -p 5001:5001 aerialclaw:demo",
         "SIM_ADAPTER=mock python server.py",
         "./scripts/doctor_gazebo.sh urban_rescue x500_lidar_2d_cam",
         "./scripts/setup_px4.sh",
@@ -24,7 +24,7 @@ def test_compose_user_path_exists_and_uses_mock_adapter():
     for expected in [
         "SIM_ADAPTER: mock",
         "5001:5001",
-        "aerialclaw:review",
+        "aerialclaw:demo",
         "/api/status",
     ]:
         assert expected in text

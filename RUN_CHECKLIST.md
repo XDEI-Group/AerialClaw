@@ -14,8 +14,8 @@ docker compose up --build
 curl http://localhost:5001/api/status
 
 # Equivalent plain Docker path
-docker build -t aerialclaw:review .
-docker run --rm -p 5001:5001 aerialclaw:review
+docker build -t aerialclaw:demo .
+docker run --rm -p 5001:5001 aerialclaw:demo
 curl http://localhost:5001/api/status
 
 # Local fallback path
@@ -43,7 +43,7 @@ SIM_ADAPTER=mock python server.py
 
 The quick repository package is intentionally mock mode. PX4/Gazebo is the guided second path: it is supported by repository scripts, but it still requires heavyweight OS-level simulator dependencies. AirSim/OpenFly remains an external integration path and is not the public default quick path.
 
-For PX4/Gazebo review, use:
+For PX4/Gazebo validation, use:
 
 ```bash
 ./scripts/doctor_gazebo.sh urban_rescue x500_lidar_2d_cam
@@ -66,8 +66,8 @@ At the time of hardening, the local smoke gate is expected to report:
 - `python -m pytest` — 10 tests pass
 - `cd ui && npm run lint` — pass with no warnings/errors
 - `cd ui && npm run build` — pass
-- `docker build -t aerialclaw:review .` — pass when Docker daemon is available
-- `docker run --rm -p 5001:5001 aerialclaw:review` + `curl /api/status` — pass
+- `docker build -t aerialclaw:demo .` — pass when Docker daemon is available
+- `docker run --rm -p 5001:5001 aerialclaw:demo` + `curl /api/status` — pass
 - `docker compose config` — pass
 
 ## Remaining known limitations

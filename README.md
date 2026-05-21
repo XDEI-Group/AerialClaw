@@ -187,11 +187,12 @@ git clone https://github.com/XDEI-Group/AerialClaw.git
 cd AerialClaw
 
 # Option A: Docker Compose
+# Windows users: start Docker Desktop first and wait until the Linux engine is running.
 docker compose up --build
 
 # Option B: plain Docker
-docker build -t aerialclaw:review .
-docker run --rm -p 5001:5001 aerialclaw:review
+docker build -t aerialclaw:demo .
+docker run --rm -p 5001:5001 aerialclaw:demo
 ```
 
 Verify in another terminal:
@@ -226,7 +227,15 @@ npm install
 npm run build
 cd ..
 
+# macOS / Linux
 SIM_ADAPTER=mock python server.py
+
+# Windows PowerShell
+$env:SIM_ADAPTER="mock"; python server.py
+
+# Windows CMD
+set SIM_ADAPTER=mock
+python server.py
 ```
 
 Verify:

@@ -3,7 +3,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: aerialclaw:review
+    image: aerialclaw:demo
     environment:
       SIM_ADAPTER: mock
       SERVER_HOST: 0.0.0.0

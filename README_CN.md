@@ -188,11 +188,12 @@ git clone https://github.com/XDEI-Group/AerialClaw.git
 cd AerialClaw
 
 # 方式 A：Docker Compose
+# Windows 用户：请先启动 Docker Desktop，并等待 Linux engine 运行后再执行。
 docker compose up --build
 
 # 方式 B：普通 Docker
-docker build -t aerialclaw:review .
-docker run --rm -p 5001:5001 aerialclaw:review
+docker build -t aerialclaw:demo .
+docker run --rm -p 5001:5001 aerialclaw:demo
 ```
 
 另开终端验证：
@@ -227,7 +228,15 @@ npm install
 npm run build
 cd ..
 
+# macOS / Linux
 SIM_ADAPTER=mock python server.py
+
+# Windows PowerShell
+$env:SIM_ADAPTER="mock"; python server.py
+
+# Windows CMD
+set SIM_ADAPTER=mock
+python server.py
 ```
 
 验证：
