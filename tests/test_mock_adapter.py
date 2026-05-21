@@ -22,3 +22,26 @@ def test_mock_adapter_basic_flight_cycle():
     assert not adapter.is_armed()
     assert not adapter.is_in_air()
     assert adapter.get_position().down == 0
+
+
+def test_mock_adapter_supports_cockpit_velocity_controls():
+    adapter = MockAdapter()
+
+    disconnected = adapter.stop_velocity()
+    assert not disconnected.success
+
+    assert adapter.connect()
+    adapter.takeoff(altitude=5)
+
+    move = adapter.set_velocity_body(2.0, -1.0, 0.5, yaw_rate=15.0)
+    assert move.success
+    assert move.data["velocity_body"] == [2.0, -1.0, 0.5, 15.0]
+    pos = adapter.get_position()
+    assert pos.north == 0.2
+    assert pos.east == -0.1
+    assert pos.down == -4.95
+    assert adapter.get_state().velocity == [2.0, -1.0, 0.5]
+
+    stop = adapter.stop_velocity()
+    assert stop.success
+    assert adapter.get_state().velocity == [0.0, 0.0, 0.0]

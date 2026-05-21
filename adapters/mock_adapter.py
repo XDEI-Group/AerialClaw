@@ -23,6 +23,7 @@ class MockAdapter(SimAdapter):
         self._armed = False
         self._in_air = False
         self._position = Position(0, 0, 0)
+        self._velocity_body = [0.0, 0.0, 0.0, 0.0]
         self._battery = (12.6, 1.0)
 
     def connect(self, connection_str="mock://", timeout=1.0) -> bool:
@@ -42,6 +43,7 @@ class MockAdapter(SimAdapter):
             position_ned=self._position,
             position_gps=GPSPosition(47.397971, 8.546163, self._position.altitude),
             battery_voltage=self._battery[0], battery_percent=self._battery[1],
+            velocity=self._velocity_body[:3],
         )
 
     def get_position(self) -> Position:
@@ -94,8 +96,43 @@ class MockAdapter(SimAdapter):
         return ActionResult(True, f"悬停 {duration}s (mock)",
                           {"position": self._position.to_list()}, duration)
 
+
+    def set_velocity_body(self, forward: float, right: float, down: float, yaw_rate: float = 0.0) -> ActionResult:
+        """Apply one small body-frame velocity step for keyboard/cockpit control.
+
+        The mock adapter has no background physics loop, so each Socket.IO
+        velocity event advances the in-memory position by a short fixed time
+        step. This keeps the Web cockpit path usable without PX4/Gazebo/AirSim.
+        """
+        if not self._connected:
+            return ActionResult(False, "Not connected")
+
+        dt = 0.1
+        self._velocity_body = [float(forward), float(right), float(down), float(yaw_rate)]
+        self._position = Position(
+            self._position.north + float(forward) * dt,
+            self._position.east + float(right) * dt,
+            self._position.down + float(down) * dt,
+        )
+        if any(abs(v) > 1e-9 for v in self._velocity_body[:3]):
+            self._in_air = True
+        return ActionResult(
+            True,
+            "velocity_body sent (mock)",
+            {"velocity_body": self._velocity_body, "position": self._position.to_list()},
+            dt,
+        )
+
+    def stop_velocity(self) -> ActionResult:
+        """Stop keyboard/cockpit velocity control in mock mode."""
+        if not self._connected:
+            return ActionResult(False, "Not connected")
+        self._velocity_body = [0.0, 0.0, 0.0, 0.0]
+        return ActionResult(True, "velocity stopped (mock)", {"position": self._position.to_list()})
+
     def return_to_launch(self) -> ActionResult:
         self._position = Position(0, 0, 0)
+        self._velocity_body = [0.0, 0.0, 0.0, 0.0]
         self._in_air = False
         self._armed = False
         return ActionResult(True, "RTL (mock)", duration=0.1)

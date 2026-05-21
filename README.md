@@ -210,6 +210,8 @@ Expected response contains fields similar to:
 
 The Docker image intentionally uses `requirements-mock.txt`, so it is a lightweight user image rather than a full PX4/Gazebo/AirSim image.
 
+If Docker fails while loading metadata for `python:3.12-slim` or `node:22-slim`, for example with `TLS handshake timeout` from a registry mirror such as `registry.docker-cn.com`, fix the Docker Desktop registry/proxy settings first and then rerun `docker compose up --build`. `docker run aerialclaw:demo` only works after the image has been built successfully.
+
 ### Path 2 — Local mock mode (development)
 
 Use this when editing code locally without the simulator.

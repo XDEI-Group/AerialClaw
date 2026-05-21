@@ -213,6 +213,14 @@ class SimAdapter(ABC):
     def set_heading(self, heading_deg: float) -> ActionResult:
         """设置航向角（可选实现）。"""
         return ActionResult(success=False, message="set_heading not implemented")
+
+    def set_velocity_body(self, forward: float, right: float, down: float, yaw_rate: float = 0.0) -> ActionResult:
+        """发送机体系速度指令（可选实现，用于 Web cockpit 键盘控制）。"""
+        return ActionResult(success=False, message="set_velocity_body not implemented")
+
+    def stop_velocity(self) -> ActionResult:
+        """停止机体系速度控制（可选实现，用于 Web cockpit 键盘控制）。"""
+        return ActionResult(success=False, message="stop_velocity not implemented")
     
     def orbit(self, radius: float, velocity: float, center: Position = None) -> ActionResult:
         """绕点飞行（可选实现）。"""

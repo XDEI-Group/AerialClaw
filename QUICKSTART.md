@@ -45,6 +45,8 @@ docker run --rm -p 5001:5001 aerialclaw:demo
 # Or check in another terminal: curl http://localhost:5001/api/status
 ```
 
+If Docker reports `TLS handshake timeout` while resolving `python:3.12-slim` or `node:22-slim`, the base image was not pulled and `aerialclaw:demo` was not created. Fix Docker Desktop's registry mirror/proxy settings, then run the build command again.
+
 ## Local mock mode evaluation
 
 If Docker is unavailable, users can run the same mock path locally:

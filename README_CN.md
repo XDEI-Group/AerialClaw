@@ -211,6 +211,8 @@ curl http://localhost:5001/api/status
 
 Docker 镜像刻意使用 `requirements-mock.txt`，定位是轻量运行镜像，不包含完整 PX4/Gazebo/AirSim 依赖。
 
+如果 Docker 在加载 `python:3.12-slim` 或 `node:22-slim` metadata 时失败，例如 registry mirror（如 `registry.docker-cn.com`）返回 `TLS handshake timeout`，请先修复 Docker Desktop 的镜像源/代理设置，再重新执行 `docker compose up --build`。只有镜像成功 build 后，`docker run aerialclaw:demo` 才能运行本地镜像。
+
 ### 路径 2 — 本地 mock 模式（开发）
 
 适合本地改代码、不启动仿真器时使用。
